@@ -35,10 +35,12 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 GOLD_MASTER_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'gold_master_order.txt')
 converter = SierraToWBSConverter(GOLD_MASTER_PATH if Path(GOLD_MASTER_PATH).exists() else None)
 
-def allowed_file(filename):
+def allowed_file(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# API Routes
+# =========================
+# API ROUTES  (/api/*)
+# =========================
 @app.route('/api/health', methods=['GET'])
 def health():
     """Health check endpoint"""
@@ -59,12 +61,11 @@ def get_employees():
             employees.append({
                 "id": i + 1,
                 "name": name,
-                "ssn": f"***-**-{str(i).zfill(4)}",  # Masked SSN
-                "department": "UNKNOWN",  # Would come from employee database
-                "pay_rate": 0.0,  # Would come from employee database
+                "ssn": f"***-**-{str(i).zfill(4)}",   # Masked SSN
+                "department": "UNKNOWN",             # Would come from employee database
+                "pay_rate": 0.0,                     # Would come from employee database
                 "status": "A"
             })
-        
         return jsonify(employees)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -76,35 +77,35 @@ def process_payroll():
         # Check if file is present
         if 'file' not in request.files:
             return jsonify({"error": "No file provided"}), 400
-        
+
         file = request.files['file']
         if file.filename == '':
             return jsonify({"error": "No file selected"}), 400
-        
+
         if not allowed_file(file.filename):
             return jsonify({"error": "File must be Excel format (.xlsx or .xls)"}), 400
-        
+
         # Save uploaded file
         filename = secure_filename(file.filename)
         input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(input_path)
-        
+
         # Create output file path
         output_filename = f"WBS_Payroll_{filename}"
         output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
-        
+
         # Convert file
         result = converter.convert(input_path, output_path)
-        
+
         # Clean up input file
         try:
             os.remove(input_path)
-        except:
+        except Exception:
             pass
-        
+
         if not result['success']:
             return jsonify({"error": f"Conversion failed: {result['error']}"}), 422
-        
+
         # Return the converted file
         return send_file(
             output_path,
@@ -112,7 +113,7 @@ def process_payroll():
             download_name=output_filename,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        
+
     except Exception as e:
         app.logger.error(f"Error processing payroll: {str(e)}")
         app.logger.error(traceback.format_exc())
@@ -124,23 +125,23 @@ def validate_sierra_file():
     try:
         if 'file' not in request.files:
             return jsonify({"error": "No file provided"}), 400
-        
+
         file = request.files['file']
         if file.filename == '':
             return jsonify({"error": "No file selected"}), 400
-        
+
         if not allowed_file(file.filename):
             return jsonify({"error": "File must be Excel format (.xlsx or .xls)"}), 400
-        
+
         # Save uploaded file temporarily
         filename = secure_filename(file.filename)
         temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"temp_{filename}")
         file.save(temp_path)
-        
+
         try:
             # Parse file to validate format
             sierra_data = converter.parse_sierra_file(temp_path)
-            
+
             if sierra_data.empty:
                 return jsonify({
                     "valid": False,
@@ -148,11 +149,11 @@ def validate_sierra_file():
                     "employees": 0,
                     "total_hours": 0.0
                 })
-            
+
             # Calculate stats
             total_hours = float(sierra_data['Hours'].sum())
             unique_employees = int(sierra_data['Name'].nunique())
-            
+
             return jsonify({
                 "valid": True,
                 "employees": unique_employees,
@@ -160,14 +161,14 @@ def validate_sierra_file():
                 "total_entries": len(sierra_data),
                 "employee_names": sierra_data['Name'].unique().tolist()[:10]  # First 10 names
             })
-            
+
         finally:
             # Clean up temp file
             try:
                 os.remove(temp_path)
-            except:
+            except Exception:
                 pass
-                
+
     except Exception as e:
         app.logger.error(f"Error validating file: {str(e)}")
         return jsonify({
@@ -188,7 +189,9 @@ def get_conversion_stats():
         "status": "operational"
     })
 
-# Frontend serving routes
+# =========================
+# FRONTEND (STATIC) SERVE
+# =========================
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
@@ -205,9 +208,11 @@ def serve(path):
         else:
             return "index.html not found", 404
 
+# =========================
+# RUN
+# =========================
 if __name__ == '__main__':
     print("Starting Sierra Payroll System...")
     print(f"Gold Master Order loaded: {len(converter.gold_master_order)} employees")
-    port = int(os.environ.get(\'PORT\', 5000))
-    app.run(host=\'0.0.0.0\', port=port, debug=False)
-
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
