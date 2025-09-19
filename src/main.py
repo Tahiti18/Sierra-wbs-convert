@@ -1,68 +1,97 @@
+#!/usr/bin/env python3
+"""
+Sierra Payroll API (stable)
+
+What this version fixes/improves
+- Prevents KeyError: 'UPLOAD_FOLDER' by registering app.config['UPLOAD_FOLDER'].
+- Robust validation: totals hours from Hours OR REG/OT/DT OR A01/A02/A03 (with common aliases).
+- Keeps existing endpoints and behavior so your frontend keeps working.
+"""
+
 import os
 import sys
 import traceback
 from pathlib import Path
 from werkzeug.utils import secure_filename
 
-# DON'T CHANGE THIS !!!
+# Ensure package root is importable (DON'T CHANGE)
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from flask import Flask, send_from_directory, request, jsonify, send_file
 from flask_cors import CORS
-from improved_converter import SierraToWBSConverter
 import pandas as pd
 
-app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
+from improved_converter import SierraToWBSConverter
+
+# ---------------- Flask app ----------------
+app = Flask(
+    __name__,
+    static_folder=os.path.join(os.path.dirname(__file__), 'static')
+)
 app.config['SECRET_KEY'] = 'sierra-payroll-secret-key-2024'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+
 CORS(app)
 
-# Configuration
+# ---------------- Config ----------------
 UPLOAD_FOLDER = '/tmp/uploads'
 ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Initialize converter with gold master order
-GOLD_MASTER_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'gold_master_order.txt')
-converter = SierraToWBSConverter(GOLD_MASTER_PATH if Path(GOLD_MASTER_PATH).exists() else None)
+# Ensure upload folder exists and is registered (prevents KeyError)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Gold master order path
+GOLD_MASTER_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    'data',
+    'gold_master_order.txt'
+)
+
+# Converter
+converter = SierraToWBSConverter(
+    GOLD_MASTER_PATH if Path(GOLD_MASTER_PATH).exists() else None
+)
 
 def allowed_file(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# ---------------- Validation helpers ----------------
 def _coerce_num(s):
     return pd.to_numeric(s, errors='coerce').fillna(0.0)
 
 def _compute_total_hours(df: pd.DataFrame) -> float:
     """
     Robust hours calculator:
-    - Prefer explicit 'Hours'
-    - Else sum REG/OT/DT variants
-    - Else sum A01/A02/A03 (template style)
+    - Prefer explicit 'Hours', 'Hrs', 'Total Hours', 'Total' (if numeric).
+    - Else sum REG/OT/DT variants (REGULAR/OVERTIME/DOUBLETIME, Regular/Overtime/Double Time, REG/OT/DT).
+    - Else sum A01/A02/A03.
+    - Else sum any column whose name contains 'hour'.
     """
     if df is None or df.empty:
         return 0.0
 
-    # 1) Single 'Hours' column
+    # 1) Single total column
     for col in ['Hours', 'Hrs', 'Total Hours', 'Total']:
         if col in df.columns:
             tot = float(_coerce_num(df[col]).sum())
             if tot > 0:
                 return tot
 
-    # 2) Triplets that imply total hours
-    triplet_aliases = [
+    # 2) Triplets indicating hours
+    triplets = [
         ('REGULAR', 'OVERTIME', 'DOUBLETIME'),
         ('Regular', 'Overtime', 'Double Time'),
         ('REG', 'OT', 'DT'),
         ('A01', 'A02', 'A03')
     ]
-    for a, b, c in triplet_aliases:
+    for a, b, c in triplets:
         if a in df.columns and b in df.columns and c in df.columns:
             tot = float(_coerce_num(df[[a, b, c]]).sum().sum())
             if tot > 0:
                 return tot
 
-    # 3) Fallback: sum any column whose name includes 'hour'
+    # 3) Any 'hour'-ish columns
     hourish = [c for c in df.columns if isinstance(c, str) and 'hour' in c.lower()]
     if hourish:
         tot = float(_coerce_num(df[hourish]).sum().sum())
@@ -71,6 +100,7 @@ def _compute_total_hours(df: pd.DataFrame) -> float:
 
     return 0.0
 
+# ---------------- Routes ----------------
 @app.route('/api/health', methods=['GET'])
 def health():
     return jsonify({
@@ -154,14 +184,18 @@ def validate_sierra_file():
         file.save(tmp_path)
 
         try:
+            # Our converter's parser (already canonicalizes and cleans)
             sierra_df = converter.parse_sierra_file(tmp_path)
-            # employee count (unique names with non-empty)
-            emp_count = int(sierra_df['Name'].astype(str).str.strip().replace('', pd.NA).dropna().nunique()) if not sierra_df.empty else 0
-            # robust total hours
+
+            emp_count = 0
+            if sierra_df is not None and not sierra_df.empty and 'Name' in sierra_df.columns:
+                emp_count = int(
+                    sierra_df['Name'].astype(str).str.strip().replace('', pd.NA).dropna().nunique()
+                )
+
             total_hours = _compute_total_hours(sierra_df)
 
-            # If still zero, try to recompute from potentially named columns in raw excel
-            # (Safety net — won’t throw if parse already cleaned)
+            # Safety net: if still zero, try reading raw sheet with header=0
             if total_hours == 0:
                 try:
                     raw = pd.read_excel(tmp_path, sheet_name=0, header=0)
@@ -201,12 +235,12 @@ def get_conversion_stats():
         "status": "operational"
     })
 
-# Frontend serving routes
+# ---------------- Static (frontend) ----------------
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
     static_folder_path = app.static_folder
-    if static_folder_path is None:
+    if not static_folder_path:
         return "Static folder not configured", 404
 
     file_path = os.path.join(static_folder_path, path)
@@ -219,6 +253,7 @@ def serve(path):
         else:
             return "index.html not found", 404
 
+# ---------------- Entrypoint ----------------
 if __name__ == '__main__':
     print("Starting Sierra Payroll System...")
     print(f"Gold Master Order loaded: {len(getattr(converter, 'gold_master_order', []))} employees")
