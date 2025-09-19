@@ -1,7 +1,15 @@
-# improved_converter.py — roster-merge hardened; fills Dept/Type/Pay Rate
+# -*- coding: utf-8 -*-
+"""
+Improved Sierra → WBS converter.
+- Reads Sierra "WEEKLY" sheet (or first sheet fallback)
+- Merges gold roster (SSN/Status/Type/Dept/Pay Rate)
+- Writes into data/wbs_template.xlsx while preserving layout
+- Ensures far-right Totals column is populated and a grand totals row exists
+"""
+
 from __future__ import annotations
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 import re
 import pandas as pd
 from openpyxl import load_workbook
@@ -9,6 +17,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.workbook.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
+# ---------- paths ----------
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 ORDER_TXT = DATA / "gold_master_order.txt"
@@ -16,13 +25,12 @@ ROSTER_CSV = DATA / "gold_master_roster.csv"
 TEMPLATE_XLSX = DATA / "wbs_template.xlsx"
 TARGET_SHEET = "WEEKLY"
 
-# ---------------- helpers ----------------
-def _norm(s: str) -> str:
-    return (s or "").strip().lower()
+# ---------- helpers ----------
+def _norm(s: Any) -> str:
+    return ("" if s is None else str(s)).strip().lower()
 
-def _canon_name(s: str) -> str:
-    if not isinstance(s, str):
-        s = "" if s is None else str(s)
+def _canon_name(s: Any) -> str:
+    s = "" if s is None else str(s)
     s = s.strip()
     s = re.sub(r"\s+", " ", s)
     s = s.replace(".", "")
@@ -30,9 +38,11 @@ def _canon_name(s: str) -> str:
     s = s.replace(" ,", ",")
     return s.lower()
 
-def _num(v) -> float:
+def _num(v: Any) -> float:
     try:
-        if v is None or (isinstance(v, str) and v.strip() == ""):
+        if v is None:
+            return 0.0
+        if isinstance(v, str) and v.strip() == "":
             return 0.0
         return float(v)
     except Exception:
@@ -44,15 +54,15 @@ def _load_order() -> List[str]:
     return [ln.strip() for ln in ORDER_TXT.read_text(encoding="utf-8").splitlines() if ln.strip()]
 
 def _find_header_row(ws: Worksheet) -> Tuple[int, Dict[str, int]]:
+    """Find the row that contains 'Employee Name' and map important columns."""
     cmap: Dict[str, int] = {}
     for r in range(1, min(ws.max_row, 150) + 1):
-        labels = [str(c.value).strip() if c.value is not None else "" for c in ws[r]]
+        labels = ["" if c.value is None else str(c.value).strip() for c in ws[r]]
         low = [_norm(v).replace(" ", "") for v in labels]
         if "employeename" in low:
             for i, v in enumerate(labels, start=1):
-                k = _norm(v)
-                k0 = k.replace(" ", "")
-                if k0 in ("employeename",):
+                k = _norm(v); k0 = k.replace(" ", "")
+                if k0 == "employeename":
                     cmap["Employee Name"] = i
                 elif k0 in ("ssn", "socialsecuritynumber", "socialsecurity#", "socialsecurityno"):
                     cmap["SSN"] = i
@@ -60,31 +70,33 @@ def _find_header_row(ws: Worksheet) -> Tuple[int, Dict[str, int]]:
                     cmap["REGULAR"] = i
                 elif k0 in ("overtime", "ot"):
                     cmap["OVERTIME"] = i
-                elif k0 in ("doubletime", "double time"):
+                elif k0 in ("doubletime", "doubletime", "double time"):
                     cmap["DOUBLETIME"] = i
-                elif k0 in ("status",):
+                elif k0 == "status":
                     cmap["Status"] = i
-                elif k0 in ("type",):
+                elif k0 == "type":
                     cmap["Type"] = i
-                elif k0 in ("payrate", "payrate", "pay", "pay rate"):
+                elif k0 in ("payrate", "pay", "payrate", "pay rate"):
                     cmap["Pay Rate"] = i
                 elif k0 in ("dept", "department"):
                     cmap["Dept"] = i
                 elif k0 in ("totals", "total", "sum"):
                     cmap["Totals"] = i
+            if "Employee Name" not in cmap:
+                continue
             return r, cmap
     raise ValueError("Could not locate header row containing 'Employee Name'")
 
 def _first_data_row(h: int) -> int:
     return h + 1
 
-# ---------------- converter ----------------
+# ---------- converter ----------
 class SierraToWBSConverter:
     """
     Fills Name, SSN, REG/OT/DT, and (from roster) Dept/Type/Pay Rate into data/wbs_template.xlsx.
-    Keeps template formatting and any formulas. Compatible with your current main.py (exposes
-    .gold_master_order for health logs).
+    Retains template formatting and formulas. Exposes .gold_master_order for health logs.
     """
+
     def __init__(self, gold_master_order_path: str | None = None):
         self.gold_master_order: List[str] = []
         path = Path(gold_master_order_path) if gold_master_order_path else ORDER_TXT
@@ -93,20 +105,22 @@ class SierraToWBSConverter:
                 ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()
             ]
 
-    # ---------- used by /validate ----------
+    # ---------- used by validation ----------
     def parse_sierra_file(self, input_path: str) -> pd.DataFrame:
         """Return DF with Name, REGULAR, OVERTIME, DOUBLETIME, Hours, and __canon."""
-        # Sheet detection: try WEEKLY then first sheet; try header at row 8; else header row 1
+        # Try Sierra export layout first (header at row 8)
         try:
             df = pd.read_excel(input_path, sheet_name="WEEKLY", header=7)
         except Exception:
             df = pd.read_excel(input_path, sheet_name=0, header=7)
         df = df.dropna(how="all")
 
+        # Sometimes row 1 repeats header text again
         if not df.empty and "Employee Name" in df.columns and str(df.iloc[0]["Employee Name"]).strip() == "Employee Name":
             df = df.iloc[1:]
 
-        expected_any = set(["Employee Name", "Name", "REGULAR", "OVERTIME", "DOUBLETIME"])
+        # If columns still don’t make sense, fall back to row 1 header
+        expected_any = {"Employee Name", "Name", "REGULAR", "OVERTIME", "DOUBLETIME"}
         if len(expected_any.intersection(set(map(str, df.columns)))) < 2:
             try:
                 df = pd.read_excel(input_path, sheet_name=0, header=0).dropna(how="all")
@@ -123,11 +137,9 @@ class SierraToWBSConverter:
 
         out = pd.DataFrame({"Name": df[name_col].astype(str).str.strip()})
 
-        # Populate hours with alias handling
         def to_num_series(series_like):
             return pd.to_numeric(series_like, errors="coerce").fillna(0.0)
 
-        # Source aliases
         src_cols = {
             "REGULAR": ["REGULAR", "Regular"],
             "OVERTIME": ["OVERTIME", "Overtime", "OT"],
@@ -139,12 +151,11 @@ class SierraToWBSConverter:
 
         out["Hours"] = out[["REGULAR", "OVERTIME", "DOUBLETIME"]].sum(axis=1)
         out = out[out["Name"].astype(str).str.strip().str.len() > 0]
-
         out["__canon"] = out["Name"].map(_canon_name)
         return out
 
     def _load_roster(self) -> Dict[str, Dict[str, str]]:
-        """Return canonical_name -> {ssn,status,type,dept,pay_rate}. Logs if missing/empty."""
+        """Return canonical_name -> {ssn,status,type,dept,pay_rate}."""
         if not ROSTER_CSV.exists():
             print(f"[WARN] Roster not found: {ROSTER_CSV}")
             return {}
@@ -154,17 +165,21 @@ class SierraToWBSConverter:
             print(f"[WARN] Failed to read roster CSV: {e}")
             return {}
 
-        # map headers by aliases
-        header_map = {c: _norm(c) for c in df.columns}
+        header_map = {c: _norm(c).replace(" ", "") for c in df.columns}
+
         def _pick(*aliases):
-            return next((c for c, n in header_map.items() if n in [a.replace(" ", "").lower() for a in aliases]), None)
+            aliases = [a.replace(" ", "").lower() for a in aliases]
+            for c, norm in header_map.items():
+                if norm in aliases:
+                    return c
+            return None
 
         name_col = _pick("employeename", "name")
-        ssn_col  = _pick("ssn", "socialsecuritynumber", "socialsecurity#")
+        ssn_col  = _pick("ssn", "socialsecuritynumber", "socialsecurity#", "socialsecurityno")
         stat_col = _pick("status")
         type_col = _pick("type")
         dept_col = _pick("dept", "department")
-        rate_col = _pick("payrate", "pay rate", "rate")
+        rate_col = _pick("payrate", "payrate", "rate", "pay")
 
         if not name_col:
             print("[WARN] Roster missing 'Employee Name' column (alias).")
@@ -188,7 +203,7 @@ class SierraToWBSConverter:
         return out
 
     # ---------- main convert ----------
-    def convert(self, input_path: str, output_path: str) -> Dict:
+    def convert(self, input_path: str, output_path: str) -> Dict[str, Any]:
         try:
             # gold order
             order = self.gold_master_order[:] or _load_order()
@@ -210,7 +225,7 @@ class SierraToWBSConverter:
                 return {"success": False, "error": f"Template missing sheet '{TARGET_SHEET}'"}
             ws: Worksheet = wb[TARGET_SHEET]
 
-            # template columns
+            # locate columns in template
             h, cmap = _find_header_row(ws)
             start = _first_data_row(h)
             name_col = cmap["Employee Name"]
@@ -224,12 +239,10 @@ class SierraToWBSConverter:
             dept_col = cmap.get("Dept")
             tot_col  = cmap.get("Totals")
 
-            # letters for (=REG+OT+DT) if needed
             regL = get_column_letter(reg_col) if reg_col else None
-            otL  = get_column_letter(ot_col) if ot_col else None
-            dtL  = get_column_letter(dt_col) if dt_col else None
+            otL  = get_column_letter(ot_col)  if ot_col  else None
+            dtL  = get_column_letter(dt_col)  if dt_col  else None
 
-            # fill rows
             matches = 0
             for i, emp in enumerate(order):
                 r = start + i
@@ -239,7 +252,7 @@ class SierraToWBSConverter:
                 s = sierra_map.get(k)
                 ro = roster.get(k, {})
 
-                # SSN / status / type / dept / rate from roster if present
+                # From roster
                 if ssn_col:  ws.cell(row=r, column=ssn_col).value  = ro.get("ssn", "")
                 if stat_col: ws.cell(row=r, column=stat_col).value = ro.get("status", "") or "A"
                 if type_col: ws.cell(row=r, column=type_col).value = ro.get("type", "") or "H"
@@ -263,22 +276,27 @@ class SierraToWBSConverter:
                 if s is not None:
                     matches += 1
 
-                # Row total: if template cell lacks a formula, write =REG+OT+DT
-                if tot_col:
+                # Ensure per-row Totals column has a formula if blank
+                if tot_col and regL and otL and dtL:
                     c = ws.cell(row=r, column=tot_col)
-                    has_formula = isinstance(c.value, str) and c.value.startswith("=")
-                    if not has_formula and regL and otL and dtL:
+                    if not (isinstance(c.value, str) and c.value.startswith("=")):
                         c.value = f"={regL}{r}+{otL}{r}+{dtL}{r}"
+
+            # Append a totals row at the first empty row after last employee
+            last_row = start + len(order)
+            if reg_col and ot_col and dt_col and tot_col:
+                ws.cell(row=last_row, column=name_col).value = "TOTAL"
+                # Sum each hours column (keep template formats)
+                for col in (reg_col, ot_col, dt_col, tot_col):
+                    colL = get_column_letter(col)
+                    ws.cell(row=last_row, column=col).value = f"=SUM({colL}{start}:{colL}{last_row-1})"
 
             wb.save(output_path)
 
             total_hours = float(df[["REGULAR", "OVERTIME", "DOUBLETIME"]].sum().sum()) if not df.empty else 0.0
             if matches == 0:
                 print("[WARN] No Sierra rows matched names in gold order after canonicalization.")
-
-            # Quick roster coverage info
-            have_roster = bool(roster)
-            if not have_roster:
+            if not roster:
                 print("[WARN] Roster merge skipped (missing or unreadable).")
 
             return {"success": True, "employees": len(order), "hours": total_hours}
