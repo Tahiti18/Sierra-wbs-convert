@@ -1,276 +1,148 @@
-#!/usr/bin/env python3
-"""
-Sierra Payroll API (stable)
-
-Fixes:
-- KeyError: 'UPLOAD_FOLDER'  -> app.config registered + mkdirs
-- TypeError: arg must be a list/tuple/Series -> safe numeric coercion
-- Validation totals hours from Hours OR REG/OT/DT OR A01/A02/A03 (with aliases)
-
-Keeps existing endpoints/behavior so the frontend works as-is.
-"""
-
+# -*- coding: utf-8 -*-
 import os
-import sys
 import traceback
 from pathlib import Path
+from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
-# Make project root importable (DON'T CHANGE)
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+# local import
+from improved_converter import SierraToWBSConverter, DATA, ORDER_TXT
 
-from flask import Flask, send_from_directory, request, jsonify, send_file
-from flask_cors import CORS
-import pandas as pd
-
-from improved_converter import SierraToWBSConverter
-
-# ---------------- Flask app ----------------
-app = Flask(
-    __name__,
-    static_folder=os.path.join(os.path.dirname(__file__), 'static')
-)
-app.config['SECRET_KEY'] = 'sierra-payroll-secret-key-2024'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+# ---- app & config ----
+app = Flask(__name__, static_folder=str(Path(__file__).resolve().parent / "static"))
 CORS(app)
 
-# ---------------- Config ----------------
-UPLOAD_FOLDER = '/tmp/uploads'
-ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+# uploads (fixes earlier 'UPLOAD_FOLDER' errors)
+UPLOAD_FOLDER = Path("/tmp/uploads")
+UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB
 
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)        # ✅ ensure exists
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER      # ✅ prevent KeyError
+ALLOWED_EXT = {"xlsx", "xls"}
 
-# Gold master order path
-GOLD_MASTER_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), 'data', 'gold_master_order.txt'
-)
+# converter
+converter = SierraToWBSConverter(str(ORDER_TXT if ORDER_TXT.exists() else ""))
 
-# Converter
-converter = SierraToWBSConverter(
-    GOLD_MASTER_PATH if Path(GOLD_MASTER_PATH).exists() else None
-)
+def _ok_file(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXT
 
-def allowed_file(filename: str) -> bool:
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def _coerce_num(series_like):
+    import pandas as pd
+    return pd.to_numeric(series_like, errors="coerce").fillna(0.0)
 
-# ---------------- Validation helpers ----------------
-def _coerce_series(df: pd.DataFrame, col: str) -> pd.Series:
-    """Return numeric Series for column if present, else a zero Series."""
-    if df is None or df.empty:
-        return pd.Series(dtype=float)
-    if col in df.columns:
-        return pd.to_numeric(df[col], errors='coerce').fillna(0.0)
-    # zero Series aligned to df index so sums work
-    return pd.Series([0.0] * len(df), index=df.index)
-
-def _sum_cols(df: pd.DataFrame, cols) -> float:
-    """Sum a list of columns safely; treats missing columns as zeros."""
-    if df is None or df.empty:
-        return 0.0
-    total_series = None
-    for c in cols:
-        s = _coerce_series(df, c)
-        total_series = s if total_series is None else (total_series + s)
-    return float(0.0 if total_series is None else total_series.sum())
-
-def _compute_total_hours(df: pd.DataFrame) -> float:
-    """
-    Robust hours calculator:
-    - Prefer explicit 'Hours' / 'Hrs' / 'Total Hours' / 'Total' if that column is numeric hours.
-    - Else sum REG/OT/DT variants (REGULAR/OVERTIME/DOUBLETIME, Regular/Overtime/Double Time, REG/OT/DT).
-    - Else sum A01/A02/A03.
-    - Else sum any columns whose name contains 'hour'.
-    Never passes a scalar into a function expecting a Series (prevents TypeError).
-    """
-    if df is None or df.empty:
-        return 0.0
-
-    # 1) explicit single column totals
-    for col in ['Hours', 'Hrs', 'Total Hours', 'Total']:
-        if col in df.columns:
-            val = float(_coerce_series(df, col).sum())
-            if val > 0:
-                return val
-
-    # 2) triplets that imply total hours
-    triplets = [
-        ('REGULAR', 'OVERTIME', 'DOUBLETIME'),
-        ('Regular', 'Overtime', 'Double Time'),
-        ('REG', 'OT', 'DT'),
-        ('A01', 'A02', 'A03')
-    ]
-    for a, b, c in triplets:
-        if any(x in df.columns for x in (a, b, c)):
-            val = _sum_cols(df, [a, b, c])
-            if val > 0:
-                return val
-
-    # 3) any 'hour'-ish columns
-    hourish = [c for c in df.columns if isinstance(c, str) and 'hour' in c.lower()]
-    if hourish:
-        val = _sum_cols(df, hourish)
-        if val > 0:
-            return val
-
-    return 0.0
-
-# ---------------- Routes ----------------
-@app.route('/api/health', methods=['GET'])
+# ---- routes ----
+@app.route("/api/health", methods=["GET"])
 def health():
     return jsonify({
         "status": "ok",
         "version": "2.0.0",
-        "converter": "improved_flask",
-        "gold_master_loaded": bool(getattr(converter, "gold_master_order", [])),
-        "gold_master_count": len(getattr(converter, "gold_master_order", []))
+        "converter": "improved_template_writer",
+        "gold_master_loaded": bool(converter.gold_master_order),
+        "gold_master_count": len(converter.gold_master_order)
     })
 
-@app.route('/api/employees', methods=['GET'])
-def get_employees():
-    try:
-        employees = []
-        for i, name in enumerate(getattr(converter, "gold_master_order", [])):
-            employees.append({
-                "id": i + 1,
-                "name": name,
-                "ssn": f"***-**-{str(i).zfill(4)}",
-                "department": "UNKNOWN",
-                "pay_rate": 0.0,
-                "status": "A"
-            })
-        return jsonify(employees)
-    except Exception as e:
-        app.logger.exception("employees endpoint failed")
-        return jsonify({"error": str(e)}), 500
+@app.route("/api/employees", methods=["GET"])
+def employees():
+    return jsonify([
+        {"id": i+1, "name": n, "ssn": "***-**-****", "department": "", "status": "A"}
+        for i, n in enumerate(converter.gold_master_order)
+    ])
 
-@app.route('/api/process-payroll', methods=['POST'])
-def process_payroll():
-    try:
-        if 'file' not in request.files:
-            return jsonify({"error": "No file provided"}), 400
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({"error": "No file selected"}), 400
-        if not allowed_file(file.filename):
-            return jsonify({"error": "File must be Excel format (.xlsx or .xls)"}), 400
-
-        in_name = secure_filename(file.filename)
-        in_path = os.path.join(app.config['UPLOAD_FOLDER'], in_name)
-        file.save(in_path)
-
-        out_name = f"WBS_Payroll_{os.path.splitext(in_name)[0]}.xlsx"
-        out_path = os.path.join(app.config['UPLOAD_FOLDER'], out_name)
-
-        result = converter.convert(in_path, out_path)
-
-        try:
-            os.remove(in_path)
-        except Exception:
-            pass
-
-        if not result.get('success'):
-            return jsonify({"error": f"Conversion failed: {result.get('error', 'unknown error')}"}), 422
-
-        return send_file(
-            out_path,
-            as_attachment=True,
-            download_name=out_name,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-
-    except Exception as e:
-        app.logger.exception("process_payroll failed")
-        return jsonify({"error": f"Processing failed: {str(e)}"}), 500
-
-@app.route('/api/validate-sierra-file', methods=['POST'])
+@app.route("/api/validate-sierra-file", methods=["POST"])
 def validate_sierra_file():
     try:
-        if 'file' not in request.files:
-            return jsonify({"error": "No file provided"}), 400
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({"error": "No file selected"}), 400
-        if not allowed_file(file.filename):
-            return jsonify({"error": "File must be Excel format (.xlsx or .xls)"}), 400
+        if "file" not in request.files:
+            return jsonify({"valid": False, "error": "No file provided"}), 400
+        f = request.files["file"]
+        if f.filename == "":
+            return jsonify({"valid": False, "error": "No file selected"}), 400
+        if not _ok_file(f.filename):
+            return jsonify({"valid": False, "error": "File must be .xlsx or .xls"}), 400
 
-        tmp_name = secure_filename(file.filename)
-        tmp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"temp_{tmp_name}")
-        file.save(tmp_path)
+        tmp_path = UPLOAD_FOLDER / ("tmp_" + secure_filename(f.filename))
+        f.save(tmp_path)
 
         try:
-            # Use converter parser first (cleans names, filters junk)
-            sierra_df = converter.parse_sierra_file(tmp_path)
+            df = converter.parse_sierra_file(str(tmp_path))
+            if df.empty:
+                return jsonify({"valid": False, "employees": 0, "total_hours": 0.0, "error": "No valid rows"})
 
-            emp_count = 0
-            if sierra_df is not None and not sierra_df.empty and 'Name' in sierra_df.columns:
-                emp_count = int(
-                    sierra_df['Name'].astype(str).str.strip().replace('', pd.NA).dropna().nunique()
-                )
+            # Total hours (REG+OT+DT) robustly
+            total_hours = float(df[["REGULAR", "OVERTIME", "DOUBLETIME"]].sum().sum())
 
-            total_hours = _compute_total_hours(sierra_df)
-
-            # Safety net: if still zero, attempt raw sheet read (header row 0)
-            if total_hours == 0:
-                try:
-                    raw = pd.read_excel(tmp_path, sheet_name=0, header=0)
-                    total_hours = _compute_total_hours(raw)
-                except Exception:
-                    pass
+            # distinct employees from Sierra present in file
+            emp_count = int(df["Name"].astype(str).str.strip().replace({"": None}).dropna().nunique())
 
             return jsonify({
-                "valid": emp_count > 0,
+                "valid": True,
                 "employees": emp_count,
-                "total_hours": float(round(total_hours, 2)),
-                "total_entries": int(len(sierra_df)) if sierra_df is not None else 0,
-                "error": None if emp_count > 0 else "No valid employee rows detected"
+                "total_hours": round(total_hours, 2),
+                "total_entries": int(len(df)),
+                "error": None
             })
         finally:
             try:
-                os.remove(tmp_path)
+                tmp_path.unlink(missing_ok=True)
             except Exception:
                 pass
 
     except Exception as e:
-        app.logger.exception("validate_sierra_file failed")
-        return jsonify({
-            "valid": False,
-            "error": str(e),
-            "employees": 0,
-            "total_hours": 0.0
-        })
+        app.logger.error("validate_sierra_file failed: %s", e)
+        app.logger.error(traceback.format_exc())
+        return jsonify({"valid": False, "error": str(e), "employees": 0, "total_hours": 0.0}), 500
 
-@app.route('/api/conversion-stats', methods=['GET'])
-def get_conversion_stats():
-    return jsonify({
-        "total_conversions": 0,
-        "last_conversion": None,
-        "average_employees": 0,
-        "average_hours": 0.0,
-        "status": "operational"
-    })
+@app.route("/api/process-payroll", methods=["POST"])
+def process_payroll():
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+        f = request.files["file"]
+        if f.filename == "":
+            return jsonify({"error": "No file selected"}), 400
+        if not _ok_file(f.filename):
+            return jsonify({"error": "File must be .xlsx or .xls"}), 400
 
-# ---------------- Static (frontend) ----------------
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
+        in_path  = UPLOAD_FOLDER / secure_filename(f.filename)
+        out_name = f"WBS_Payroll_{os.path.splitext(os.path.basename(f.filename))[0]}.xlsx"
+        out_path = UPLOAD_FOLDER / out_name
+
+        f.save(in_path)
+        try:
+            result = converter.convert(str(in_path), str(out_path))
+            if not result.get("success"):
+                return jsonify({"error": result.get("error", "Conversion failed")}), 422
+
+            return send_file(
+                str(out_path),
+                as_attachment=True,
+                download_name=out_name,
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        finally:
+            try: in_path.unlink(missing_ok=True)
+            except Exception: pass
+            # don't unlink out_path; user will download it
+    except Exception as e:
+        app.logger.error("process_payroll failed: %s", e)
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": f"Processing failed: {e}"}), 500
+
+# Static fall-through
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
 def serve(path):
-    static_folder_path = app.static_folder
-    if not static_folder_path:
-        return "Static folder not configured", 404
+    static_path = Path(app.static_folder)
+    if path and (static_path / path).exists():
+        return send_from_directory(static_path, path)
+    index_path = static_path / "index.html"
+    if index_path.exists():
+        return send_from_directory(static_path, "index.html")
+    return "index.html not found", 404
 
-    file_path = os.path.join(static_folder_path, path)
-    if path != "" and os.path.exists(file_path):
-        return send_from_directory(static_folder_path, path)
-    else:
-        index_path = os.path.join(static_folder_path, 'index.html')
-        if os.path.exists(index_path):
-            return send_from_directory(static_folder_path, 'index.html')
-        else:
-            return "index.html not found", 404
-
-# ---------------- Entrypoint ----------------
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("Starting Sierra Payroll System...")
-    print(f"Gold Master Order loaded: {len(getattr(converter, 'gold_master_order', []))} employees")
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    print(f"Gold Master Order loaded: {len(converter.gold_master_order)} employees")
+    port = int(os.environ.get("PORT", 8080))
+    # Host 0.0.0.0 for Railway
+    app.run(host="0.0.0.0", port=port, debug=False)
