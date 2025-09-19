@@ -2,10 +2,12 @@
 """
 Sierra Payroll API (stable)
 
-What this version fixes/improves
-- Prevents KeyError: 'UPLOAD_FOLDER' by registering app.config['UPLOAD_FOLDER'].
-- Robust validation: totals hours from Hours OR REG/OT/DT OR A01/A02/A03 (with common aliases).
-- Keeps existing endpoints and behavior so your frontend keeps working.
+Fixes:
+- KeyError: 'UPLOAD_FOLDER'  -> app.config registered + mkdirs
+- TypeError: arg must be a list/tuple/Series -> safe numeric coercion
+- Validation totals hours from Hours OR REG/OT/DT OR A01/A02/A03 (with aliases)
+
+Keeps existing endpoints/behavior so the frontend works as-is.
 """
 
 import os
@@ -14,7 +16,7 @@ import traceback
 from pathlib import Path
 from werkzeug.utils import secure_filename
 
-# Ensure package root is importable (DON'T CHANGE)
+# Make project root importable (DON'T CHANGE)
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from flask import Flask, send_from_directory, request, jsonify, send_file
@@ -30,22 +32,18 @@ app = Flask(
 )
 app.config['SECRET_KEY'] = 'sierra-payroll-secret-key-2024'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
-
 CORS(app)
 
 # ---------------- Config ----------------
 UPLOAD_FOLDER = '/tmp/uploads'
 ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
 
-# Ensure upload folder exists and is registered (prevents KeyError)
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)        # ✅ ensure exists
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER      # ✅ prevent KeyError
 
 # Gold master order path
 GOLD_MASTER_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
-    'data',
-    'gold_master_order.txt'
+    os.path.dirname(os.path.dirname(__file__)), 'data', 'gold_master_order.txt'
 )
 
 # Converter
@@ -57,28 +55,45 @@ def allowed_file(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # ---------------- Validation helpers ----------------
-def _coerce_num(s):
-    return pd.to_numeric(s, errors='coerce').fillna(0.0)
+def _coerce_series(df: pd.DataFrame, col: str) -> pd.Series:
+    """Return numeric Series for column if present, else a zero Series."""
+    if df is None or df.empty:
+        return pd.Series(dtype=float)
+    if col in df.columns:
+        return pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+    # zero Series aligned to df index so sums work
+    return pd.Series([0.0] * len(df), index=df.index)
+
+def _sum_cols(df: pd.DataFrame, cols) -> float:
+    """Sum a list of columns safely; treats missing columns as zeros."""
+    if df is None or df.empty:
+        return 0.0
+    total_series = None
+    for c in cols:
+        s = _coerce_series(df, c)
+        total_series = s if total_series is None else (total_series + s)
+    return float(0.0 if total_series is None else total_series.sum())
 
 def _compute_total_hours(df: pd.DataFrame) -> float:
     """
     Robust hours calculator:
-    - Prefer explicit 'Hours', 'Hrs', 'Total Hours', 'Total' (if numeric).
+    - Prefer explicit 'Hours' / 'Hrs' / 'Total Hours' / 'Total' if that column is numeric hours.
     - Else sum REG/OT/DT variants (REGULAR/OVERTIME/DOUBLETIME, Regular/Overtime/Double Time, REG/OT/DT).
     - Else sum A01/A02/A03.
-    - Else sum any column whose name contains 'hour'.
+    - Else sum any columns whose name contains 'hour'.
+    Never passes a scalar into a function expecting a Series (prevents TypeError).
     """
     if df is None or df.empty:
         return 0.0
 
-    # 1) Single total column
+    # 1) explicit single column totals
     for col in ['Hours', 'Hrs', 'Total Hours', 'Total']:
         if col in df.columns:
-            tot = float(_coerce_num(df[col]).sum())
-            if tot > 0:
-                return tot
+            val = float(_coerce_series(df, col).sum())
+            if val > 0:
+                return val
 
-    # 2) Triplets indicating hours
+    # 2) triplets that imply total hours
     triplets = [
         ('REGULAR', 'OVERTIME', 'DOUBLETIME'),
         ('Regular', 'Overtime', 'Double Time'),
@@ -86,17 +101,17 @@ def _compute_total_hours(df: pd.DataFrame) -> float:
         ('A01', 'A02', 'A03')
     ]
     for a, b, c in triplets:
-        if a in df.columns and b in df.columns and c in df.columns:
-            tot = float(_coerce_num(df[[a, b, c]]).sum().sum())
-            if tot > 0:
-                return tot
+        if any(x in df.columns for x in (a, b, c)):
+            val = _sum_cols(df, [a, b, c])
+            if val > 0:
+                return val
 
-    # 3) Any 'hour'-ish columns
+    # 3) any 'hour'-ish columns
     hourish = [c for c in df.columns if isinstance(c, str) and 'hour' in c.lower()]
     if hourish:
-        tot = float(_coerce_num(df[hourish]).sum().sum())
-        if tot > 0:
-            return tot
+        val = _sum_cols(df, hourish)
+        if val > 0:
+            return val
 
     return 0.0
 
@@ -184,7 +199,7 @@ def validate_sierra_file():
         file.save(tmp_path)
 
         try:
-            # Our converter's parser (already canonicalizes and cleans)
+            # Use converter parser first (cleans names, filters junk)
             sierra_df = converter.parse_sierra_file(tmp_path)
 
             emp_count = 0
@@ -195,7 +210,7 @@ def validate_sierra_file():
 
             total_hours = _compute_total_hours(sierra_df)
 
-            # Safety net: if still zero, try reading raw sheet with header=0
+            # Safety net: if still zero, attempt raw sheet read (header row 0)
             if total_hours == 0:
                 try:
                     raw = pd.read_excel(tmp_path, sheet_name=0, header=0)
