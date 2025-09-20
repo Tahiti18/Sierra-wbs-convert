@@ -1,158 +1,125 @@
-#!/usr/bin/env python3
-# Flask backend – robust, no hardcoded upload folder, safe temp files,
-# counts employees/hours correctly, and uses the improved converter.
-
-from __future__ import annotations
-import io
+# src/main.py — FINAL (safe, matches converter, correct validator totals)
 import os
 import sys
-import tempfile
+import traceback
 from pathlib import Path
-from typing import Dict
-
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
+from werkzeug.utils import secure_filename
 
-# ----- paths / imports -------------------------------------------------------
-ROOT = Path(__file__).resolve().parents[1]  # repo root
-SRC  = ROOT / "src"
-DATA = ROOT / "data"
+# import converter from repo root
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from improved_converter import SierraToWBSConverter, DATA, ORDER_TXT
 
-# make sure we can import the converter from repo root
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-try:
-    from improved_converter import SierraToWBSConverter  # noqa: E402
-except Exception as e:
-    # fail fast with a clear message in logs
-    raise RuntimeError(f"Could not import improved_converter.py: {e}")
-
-# single shared converter instance (loads order.txt once)
-ORDER_TXT = DATA / "gold_master_order.txt"
-converter = SierraToWBSConverter(str(ORDER_TXT))
-
-app = Flask(__name__)
+app = Flask(__name__, static_folder=str(Path(__file__).resolve().parent / "static"))
+app.config['SECRET_KEY'] = 'sierra-payroll-secret-key-2024'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 CORS(app)
 
-# ----- helpers ---------------------------------------------------------------
-def _ok(payload: Dict, status: int = 200):
-    return jsonify(payload), status
+UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", "/tmp/uploads")
+Path(UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-def _err(msg: str, status: int = 400):
-    return jsonify({"success": False, "error": msg}), status
+ALLOWED = {"xlsx","xls"}
+def ok_ext(name:str) -> bool:
+    return "." in name and name.rsplit(".",1)[1].lower() in ALLOWED
 
+# one shared converter
+converter = SierraToWBSConverter(str(ORDER_TXT if ORDER_TXT.exists() else ""))
 
-# ----- routes ----------------------------------------------------------------
-@app.route("/api/health", methods=["GET"])
+@app.route('/api/health', methods=['GET'])
 def health():
     try:
-        order_count = len(converter.gold_master_order)
-        roster_path = DATA / "gold_master_roster.csv"
-        template_ok = (DATA / "wbs_template.xlsx").exists()
-        return _ok({
-            "success": True,
+        return jsonify({
             "status": "ok",
-            "gold_order_count": order_count,
-            "roster_present": roster_path.exists(),
-            "template_present": template_ok
+            "converter": "improved_final",
+            "gold_master_loaded": len(converter.gold_master_order) > 0,
+            "gold_master_count": len(converter.gold_master_order),
+            "data_dir": str(DATA)
         })
     except Exception as e:
-        return _err(f"health failed: {e}", 500)
+        return jsonify({"status":"error","error":str(e)}), 500
 
-
-@app.route("/api/validate-sierra-file", methods=["POST"])
-def validate_sierra_file():
+@app.route('/api/employees', methods=['GET'])
+def employees():
     try:
-        if "file" not in request.files:
-            return _err("no file part", 422)
-
-        f = request.files["file"]
-        if not f or f.filename == "":
-            return _err("empty filename", 422)
-
-        # write to a safe temp file (no UPLOAD_FOLDER dependency)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tf:
-            temp_in = Path(tf.name)
-            f.save(temp_in)
-
-        try:
-            df = converter.parse_sierra_file(str(temp_in))
-        finally:
-            try:
-                temp_in.unlink(missing_ok=True)
-            except Exception:
-                pass
-
-        if df is None or df.empty:
-            return _ok({"success": True, "employees": 0, "total_hours": 0.0})
-
-        # count only rows with any hours
-        df["Hours"] = df[["REGULAR", "OVERTIME", "DOUBLETIME"]].sum(axis=1)
-        df = df[df["Hours"] > 0]
-
-        employees = int(df.shape[0])
-        total_hours = float(df["Hours"].sum())
-
-        return _ok({
-            "success": True,
-            "employees": employees,
-            "total_hours": round(total_hours, 3)
-        })
+        return jsonify([{"id":i+1,"name":nm} for i, nm in enumerate(converter.gold_master_order)])
     except Exception as e:
-        return _err(f"validate_sierra_file failed: {e}", 500)
+        return jsonify({"error":str(e)}), 500
 
+@app.route('/api/validate-sierra-file', methods=['POST'])
+def validate():
+    try:
+        if 'file' not in request.files:
+            return jsonify({"valid":False,"error":"No file provided"})
+        f = request.files['file']
+        if not f.filename:
+            return jsonify({"valid":False,"error":"No file selected"})
+        if not ok_ext(f.filename):
+            return jsonify({"valid":False,"error":"File must be .xlsx or .xls"})
 
-@app.route("/api/process-payroll", methods=["POST"])
+        tmp = Path(app.config['UPLOAD_FOLDER']) / secure_filename(f"val_{f.filename}")
+        f.save(tmp)
+        try:
+            df = converter.parse_sierra_file(str(tmp))
+            emps = int(df["__canon"].nunique()) if not df.empty else 0
+            hours = float(df[["REGULAR","OVERTIME","DOUBLETIME"]].sum().sum()) if not df.empty else 0.0
+            return jsonify({"valid": True, "employees": emps, "total_hours": round(hours, 3)})
+        finally:
+            try: tmp.unlink(missing_ok=True)
+            except Exception: pass
+    except Exception as e:
+        app.logger.error("validate error: %s\n%s", str(e), traceback.format_exc())
+        return jsonify({"valid":False,"error":str(e)})
+
+@app.route('/api/process-payroll', methods=['POST'])
 def process_payroll():
     try:
-        if "file" not in request.files:
-            return _err("no file part", 422)
-        f = request.files["file"]
-        if not f or f.filename == "":
-            return _err("empty filename", 422)
+        if 'file' not in request.files:
+            return jsonify({"error":"No file provided"}), 400
+        f = request.files['file']
+        if not f.filename:
+            return jsonify({"error":"No file selected"}), 400
+        if not ok_ext(f.filename):
+            return jsonify({"error":"File must be .xlsx or .xls"}), 400
 
-        # temp input and output
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tf_in:
-            temp_in = Path(tf_in.name)
-            f.save(temp_in)
+        in_path  = Path(app.config['UPLOAD_FOLDER']) / secure_filename(f.filename)
+        f.save(in_path)
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tf_out:
-            temp_out = Path(tf_out.name)
+        out_name = f"WBS_Payroll_{Path(f.filename).stem}.xlsx"
+        out_path = Path(app.config['UPLOAD_FOLDER']) / out_name
 
         try:
-            result = converter.convert(str(temp_in), str(temp_out))
+            result = converter.convert(str(in_path), str(out_path))
+            if not result.get("success"):
+                return jsonify({"error": f"File format error - {result.get('error','unknown')}"}), 422
+
+            return send_file(str(out_path),
+                             as_attachment=True,
+                             download_name=out_name,
+                             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         finally:
-            try:
-                temp_in.unlink(missing_ok=True)
-            except Exception:
-                pass
-
-        if not result.get("success"):
-            try:
-                temp_out.unlink(missing_ok=True)
-            except Exception:
-                pass
-            return _err(result.get("error", "conversion failed"), 422)
-
-        # stream the generated workbook back
-        buf = io.BytesIO(temp_out.read_bytes())
-        try:
-            temp_out.unlink(missing_ok=True)
-        except Exception:
-            pass
-
-        filename = f"WBS_Payroll_{os.path.basename(f.filename).rsplit('.',1)[0]}.xlsx"
-        return send_file(
-            buf,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            as_attachment=True,
-            download_name=filename
-        )
+            try: in_path.unlink(missing_ok=True)
+            except Exception: pass
+            # do not remove out_path (streamed to client)
     except Exception as e:
-        return _err(f"process_payroll failed: {e}", 500)
+        app.logger.error("process error: %s\n%s", str(e), traceback.format_exc())
+        return jsonify({"error":str(e)}), 500
 
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve(path):
+    static_dir = app.static_folder
+    if path and Path(static_dir, path).exists():
+        return send_from_directory(static_dir, path)
+    idx = Path(static_dir) / "index.html"
+    if idx.exists():
+        return send_from_directory(static_dir, "index.html")
+    return "index.html not found", 404
 
 if __name__ == "__main__":
-    # for local runs
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
+    print("Starting Sierra Payroll System...")
+    print(f"Gold Master Order loaded: {len(converter.gold_master_order)} employees")
+    port = int(os.environ.get("PORT", "8080"))
+    app.run(host="0.0.0.0", port=port, debug=False)
