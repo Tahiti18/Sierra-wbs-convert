@@ -1,160 +1,339 @@
-import os
-import sys
-import io
-import traceback
+# improved_converter.py — FINAL
+from __future__ import annotations
 from pathlib import Path
-from werkzeug.utils import secure_filename
+from typing import Dict, List, Tuple
+import re
+import pandas as pd
+from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.workbook.workbook import Workbook
+from openpyxl.worksheet.worksheet import Worksheet
 
-# Make project root importable
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+ROOT = Path(__file__).resolve().parent
+DATA = ROOT / "data"
+ORDER_TXT = DATA / "gold_master_order.txt"
+ROSTER_CSV = DATA / "gold_master_roster.csv"
+TEMPLATE_XLSX = DATA / "wbs_template.xlsx"
+TARGET_SHEET = "WEEKLY"
 
-from flask import Flask, jsonify, request, send_file, send_from_directory
-from flask_cors import CORS
+# ---------------- helpers ----------------
+def _norm(s: str) -> str:
+    return (s or "").strip().lower()
 
-from improved_converter import SierraToWBSConverter, DATA, ORDER_TXT  # local module
+def _canon_name(s: str) -> str:
+    if not isinstance(s, str):
+        s = "" if s is None else str(s)
+    s = s.strip()
+    s = re.sub(r"\s+", " ", s)
+    s = s.replace(".", "")
+    s = re.sub(r"\s*,\s*", ", ", s)
+    s = s.replace(" ,", ",")
+    return s.lower()
 
-# --- Flask setup ------------------------------------------------------------
-app = Flask(__name__, static_folder=str(Path(__file__).resolve().parent / "static"))
-app.config['SECRET_KEY'] = 'sierra-payroll-secret-key-2024'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
-
-# Robust upload folder for Railway (always exists)
-UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", "/tmp/uploads")
-Path(UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-CORS(app)
-
-ALLOWED_EXT = {"xlsx", "xls"}
-
-def _ok_ext(name: str) -> bool:
-    return "." in name and name.rsplit(".", 1)[1].lower() in ALLOWED_EXT
-
-# One shared converter (loads gold order + roster + template from /data)
-converter = SierraToWBSConverter(str(ORDER_TXT))
-
-# --- Routes ----------------------------------------------------------------
-@app.route("/api/health", methods=["GET"])
-def health():
-    """Simple health probe + what we loaded."""
+def _num(v) -> float:
     try:
-        return jsonify({
-            "status": "ok",
-            "converter": "improved",
-            "gold_master_loaded": len(converter.gold_master_order) > 0,
-            "gold_master_count": len(converter.gold_master_order),
-            "data_dir": str(DATA),
-        })
-    except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            return 0.0
+        return float(v)
+    except Exception:
+        return 0.0
 
+def _load_order(default_path: Path) -> List[str]:
+    if not default_path.exists():
+        return []
+    return [ln.strip() for ln in default_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
 
-@app.route("/api/employees", methods=["GET"])
-def get_employees():
-    """Expose the gold master order (names only) for the Employees tab."""
-    try:
-        return jsonify([{"id": i + 1, "name": nm} for i, nm in enumerate(converter.gold_master_order)])
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/validate-sierra-file", methods=["POST"])
-def validate_sierra_file():
+def _find_header_row(ws: Worksheet) -> Tuple[int, Dict[str, int]]:
     """
-    Lightweight parse to show “N employees, H hours” immediately after upload.
-    Uses the same parser as final convert. No file is saved permanently.
+    Locate the real human headers row (with 'Employee Name').
+    Return (row_index, {Header->column_index})
     """
-    try:
-        if "file" not in request.files:
-            return jsonify({"valid": False, "error": "No file provided"})
+    cmap: Dict[str, int] = {}
+    for r in range(1, min(ws.max_row, 150) + 1):
+        vals = [str(c.value).strip() if c.value is not None else "" for c in ws[r]]
+        joined = "".join(vals).lower()
+        if "employee name" in joined:
+            # Normalize the key map
+            for i, v in enumerate(vals, start=1):
+                k = v.strip().lower().replace(" ", "")
+                if k == "employeename":
+                    cmap["Employee Name"] = i
+                elif k in ("ssn","socialsecuritynumber","socialsecurity#","socialsecurityno"):
+                    cmap["SSN"] = i
+                elif k == "regular":
+                    cmap["REGULAR"] = i
+                elif k in ("overtime","ot"):
+                    cmap["OVERTIME"] = i
+                elif k in ("doubletime","double time"):
+                    cmap["DOUBLETIME"] = i
+                elif k == "status":
+                    cmap["Status"] = i
+                elif k == "type":
+                    cmap["Type"] = i
+                elif k in ("payrate","pay","payrate"):
+                    cmap["Pay Rate"] = i
+                elif k in ("dept","department"):
+                    cmap["Dept"] = i
+                elif k in ("totals","total","sum"):
+                    cmap["Totals"] = i
+                elif k == "pchrsmon":
+                    cmap["AH1"] = i
+                elif k == "pcttlmon":
+                    cmap["AI1"] = i
+                elif k == "pchrstue":
+                    cmap["AH2"] = i
+                elif k == "pcttltue":
+                    cmap["AI2"] = i
+                elif k == "pchrswed":
+                    cmap["AH3"] = i
+                elif k == "pcttlwed":
+                    cmap["AI3"] = i
+                elif k == "pchrsthu":
+                    cmap["AH4"] = i
+                elif k == "pcttlthu":
+                    cmap["AI4"] = i
+                elif k == "pchrsfri":
+                    cmap["AH5"] = i
+                elif k == "pcttlfri":
+                    cmap["AI5"] = i
+            return r, cmap
+    raise ValueError("Could not locate header row containing 'Employee Name'")
 
-        f = request.files["file"]
-        if not f.filename:
-            return jsonify({"valid": False, "error": "No file selected"})
+def _first_data_row(h: int) -> int:
+    return h + 1
 
-        if not _ok_ext(f.filename):
-            return jsonify({"valid": False, "error": "File must be .xlsx or .xls"})
+# ---------------- converter ----------------
+class SierraToWBSConverter:
+    """
+    Produces data rows inside data/wbs_template.xlsx, preserving all formatting and formulas.
+    - Name/SSN/Status/Type/Dept/Pay Rate from gold roster
+    - REG/OT/DT from Sierra
+    - Daily pink columns populated if Sierra provides day columns; else left as 0
+    """
+    def __init__(self, gold_master_order_path: str | None = None):
+        self.gold_master_order: List[str] = []
+        path = Path(gold_master_order_path) if gold_master_order_path else ORDER_TXT
+        if path.exists():
+            self.gold_master_order = _load_order(path)
 
-        # Read into memory and hand to pandas via a temp file
-        tmp = Path(app.config['UPLOAD_FOLDER']) / secure_filename(f.filename)
-        f.save(tmp)
+    # ---------- used by /validate ----------
+    def parse_sierra_file(self, input_path: str) -> pd.DataFrame:
+        """
+        Return DF with:
+            Name, REGULAR, OVERTIME, DOUBLETIME, Hours, __canon
+        Tries WEEKLY @ header row 8 first (to match the gold layout), then falls back.
+        Also tries per-day columns if present (Mon..Fri).
+        """
+        def _read(sheet, header):
+            try:
+                return pd.read_excel(input_path, sheet_name=sheet, header=header).dropna(how="all")
+            except Exception:
+                return pd.DataFrame()
 
+        df = _read("WEEKLY", 7)
+        if df.empty:
+            df = _read(0, 7)
+        if df.empty:
+            df = _read(0, 0)
+
+        # Name column
+        name_col = None
+        for cand in ["Employee Name", "Name", "Unnamed: 2"]:
+            if cand in df.columns:
+                name_col = cand
+                break
+        if not name_col:
+            return pd.DataFrame(columns=["Name", "REGULAR", "OVERTIME", "DOUBLETIME", "Hours", "__canon"])
+
+        out = pd.DataFrame({"Name": df[name_col].astype(str).str.strip()})
+
+        # REG / OT / DT
+        def to_num(series_like):
+            return pd.to_numeric(series_like, errors="coerce").fillna(0.0)
+
+        colmap = {
+            "REGULAR": ["REGULAR", "Regular"],
+            "OVERTIME": ["OVERTIME", "Overtime", "OT"],
+            "DOUBLETIME": ["DOUBLETIME", "Double Time", "DOUBLE TIME"],
+        }
+        for dst, srcs in colmap.items():
+            src = next((c for c in srcs if c in df.columns), None)
+            out[dst] = to_num(df[src]) if src else 0.0
+
+        # Optional per-day columns (pink side)
+        # We only collect if present to fill template; otherwise left as zeros.
+        day_aliases = {
+            "MON": ["Mon", "MON", "Monday"],
+            "TUE": ["Tue", "TUE", "Tuesday"],
+            "WED": ["Wed", "WED", "Wednesday"],
+            "THU": ["Thu", "THU", "Thursday"],
+            "FRI": ["Fri", "FRI", "Friday"],
+        }
+        for key, aliases in day_aliases.items():
+            src = next((c for c in aliases if c in df.columns), None)
+            out[f"PC_HRS_{key}"] = to_num(df[src]) if src else 0.0
+            # Totals (money) typically a separate column; if not present keep 0
+            amt_src = next((c for c in [f"{key} Total", f"{key} Amount", f"{key}_TOTAL"] if c in df.columns), None)
+            out[f"PC_TTL_{key}"] = to_num(df[amt_src]) if amt_src else 0.0
+
+        out = out[out["Name"].astype(str).str.strip().str.len() > 0].copy()
+        out["Hours"] = out[["REGULAR", "OVERTIME", "DOUBLETIME"]].sum(axis=1)
+        out["__canon"] = out["Name"].map(_canon_name)
+        return out
+
+    def _load_roster(self) -> Dict[str, Dict[str, str]]:
+        """Return canonical_name -> {ssn,status,type,dept,pay_rate} from /data/gold_master_roster.csv"""
+        if not ROSTER_CSV.exists():
+            print(f"[WARN] Roster not found: {ROSTER_CSV}")
+            return {}
         try:
-            df = converter.parse_sierra_file(str(tmp))   # <- single source of truth
-        finally:
-            try: tmp.unlink(missing_ok=True)
-            except Exception: pass
+            df = pd.read_csv(ROSTER_CSV)
+        except Exception as e:
+            print(f"[WARN] Failed to read roster CSV: {e}")
+            return {}
 
-        # Counts
-        unique_names = int(df["__canon"].nunique()) if not df.empty else 0
-        total_hours = float(df[["REGULAR", "OVERTIME", "DOUBLETIME"]].sum().sum()) if not df.empty else 0.0
+        # header aliasing
+        header_norm = {c: _norm(c).replace(" ", "") for c in df.columns}
 
-        return jsonify({
-            "valid": True,
-            "employees": unique_names,
-            "total_hours": round(total_hours, 3),
-            "total_entries": int(len(df)) if not df.empty else 0
-        })
-    except Exception as e:
-        app.logger.error("ERROR in validate: %s\n%s", str(e), traceback.format_exc())
-        return jsonify({"valid": False, "error": str(e)})
+        def pick(*aliases):
+            al = {a.replace(" ", "").lower() for a in aliases}
+            for c, n in header_norm.items():
+                if n in al:
+                    return c
+            return None
 
+        name_col = pick("employeename", "name")
+        ssn_col  = pick("ssn","socialsecuritynumber","socialsecurity#")
+        stat_col = pick("status")
+        type_col = pick("type")
+        dept_col = pick("dept","department")
+        rate_col = pick("payrate","payrate","pay","pay rate")
 
-@app.route("/api/process-payroll", methods=["POST"])
-def process_payroll():
-    """Full convert -> returns the WBS Excel file (based on your /data/wbs_template.xlsx)."""
-    try:
-        if "file" not in request.files:
-            return jsonify({"error": "No file provided"}), 400
+        if not name_col:
+            print("[WARN] Roster missing an Employee Name column.")
+            return {}
 
-        f = request.files["file"]
-        if not f.filename:
-            return jsonify({"error": "No file selected"}), 400
+        out: Dict[str, Dict[str, str]] = {}
+        for _, r in df.iterrows():
+            nm = str(r.get(name_col, "")).strip()
+            if not nm: 
+                continue
+            k = _canon_name(nm)
+            out[k] = {
+                "ssn": "" if ssn_col is None or pd.isna(r.get(ssn_col)) else str(r.get(ssn_col)).strip(),
+                "status": "" if stat_col is None or pd.isna(r.get(stat_col)) else str(r.get(stat_col)).strip(),
+                "type": "" if type_col is None or pd.isna(r.get(type_col)) else str(r.get(type_col)).strip(),
+                "dept": "" if dept_col is None or pd.isna(r.get(dept_col)) else str(r.get(dept_col)).strip(),
+                "pay_rate": "" if rate_col is None or pd.isna(r.get(rate_col)) else str(r.get(rate_col)).strip(),
+            }
+        return out
 
-        if not _ok_ext(f.filename):
-            return jsonify({"error": "File must be .xlsx or .xls"}), 400
+    # ---------- main convert ----------
+    def convert(self, input_path: str, output_path: str) -> Dict:
+        try:
+            # order
+            order = self.gold_master_order[:] or _load_order(ORDER_TXT)
+            if not order:
+                return {"success": False, "error": "gold_master_order.txt missing/empty"}
 
-        # Save uploaded
-        in_path = Path(app.config['UPLOAD_FOLDER']) / secure_filename(f.filename)
-        f.save(in_path)
+            # sierra
+            df = self.parse_sierra_file(input_path)
+            sierra_map = {row["__canon"]: row for _, row in df.iterrows()}
 
-        out_name = f"WBS_Payroll_{Path(f.filename).stem}.xlsx"
-        out_path = Path(app.config['UPLOAD_FOLDER']) / out_name
+            # roster
+            roster = self._load_roster()
 
-        result = converter.convert(str(in_path), str(out_path))
+            # template
+            if not TEMPLATE_XLSX.exists():
+                return {"success": False, "error": f"Template not found: {TEMPLATE_XLSX}"}
+            wb: Workbook = load_workbook(TEMPLATE_XLSX, data_only=False)
+            if TARGET_SHEET not in wb.sheetnames:
+                return {"success": False, "error": f"Template missing sheet '{TARGET_SHEET}'"}
+            ws: Worksheet = wb[TARGET_SHEET]
 
-        try: in_path.unlink(missing_ok=True)
-        except Exception: pass
+            # column map
+            h, cmap = _find_header_row(ws)
+            start = _first_data_row(h)
+            name_col = cmap["Employee Name"]
+            ssn_col  = cmap.get("SSN")
+            reg_col  = cmap.get("REGULAR")
+            ot_col   = cmap.get("OVERTIME")
+            dt_col   = cmap.get("DOUBLETIME")
+            rate_col = cmap.get("Pay Rate")
+            stat_col = cmap.get("Status")
+            type_col = cmap.get("Type")
+            dept_col = cmap.get("Dept")
+            tot_col  = cmap.get("Totals")
 
-        if not result.get("success"):
-            return jsonify({"error": f"File format error - {result.get('error','unknown')}"}), 422
+            # Pink side (daily piecework columns) if present in template
+            AH1 = cmap.get("AH1"); AI1 = cmap.get("AI1")
+            AH2 = cmap.get("AH2"); AI2 = cmap.get("AI2")
+            AH3 = cmap.get("AH3"); AI3 = cmap.get("AI3")
+            AH4 = cmap.get("AH4"); AI4 = cmap.get("AI4")
+            AH5 = cmap.get("AH5"); AI5 = cmap.get("AI5")
 
-        return send_file(str(out_path),
-                         as_attachment=True,
-                         download_name=out_name,
-                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            regL = get_column_letter(reg_col) if reg_col else None
+            otL  = get_column_letter(ot_col) if ot_col else None
+            dtL  = get_column_letter(dt_col) if dt_col else None
 
-    except Exception as e:
-        app.logger.error("ERROR in process: %s\n%s", str(e), traceback.format_exc())
-        return jsonify({"error": str(e)}), 500
+            matches = 0
+            for i, emp in enumerate(order):
+                r = start + i
+                ws.cell(row=r, column=name_col).value = emp
 
+                k = _canon_name(emp)
+                s = sierra_map.get(k)
+                ro = roster.get(k, {})
 
-# Serve static SPA (if you’re using the built-in)
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve(path):
-    static_dir = app.static_folder
-    if path and Path(static_dir, path).exists():
-        return send_from_directory(static_dir, path)
-    index_html = Path(static_dir, "index.html")
-    if index_html.exists():
-        return send_from_directory(static_dir, "index.html")
-    return "index.html not found", 404
+                # roster fields
+                if ssn_col:  ws.cell(row=r, column=ssn_col).value  = ro.get("ssn", "")
+                if stat_col: ws.cell(row=r, column=stat_col).value = ro.get("status", "") or "A"
+                if type_col: ws.cell(row=r, column=type_col).value = ro.get("type", "") or "H"
+                if dept_col: ws.cell(row=r, column=dept_col).value = ro.get("dept", "")
 
+                if rate_col:
+                    try:
+                        val = float(ro.get("pay_rate", "") or 0.0)
+                    except Exception:
+                        val = 0.0
+                    ws.cell(row=r, column=rate_col).value = val
 
-if __name__ == "__main__":
-    print("Starting Sierra Payroll System...")
-    print(f"Gold Master Order loaded: {len(converter.gold_master_order)} employees")
-    port = int(os.environ.get("PORT", "8080"))
-    app.run(host="0.0.0.0", port=port, debug=False)
+                # Hours from Sierra
+                reg = _num(s["REGULAR"]) if s is not None else 0.0
+                ot  = _num(s["OVERTIME"]) if s is not None else 0.0
+                dt  = _num(s["DOUBLETIME"]) if s is not None else 0.0
+                if reg_col: ws.cell(row=r, column=reg_col).value = reg
+                if ot_col:  ws.cell(row=r, column=ot_col).value  = ot
+                if dt_col:  ws.cell(row=r, column=dt_col).value  = dt
+
+                if s is not None:
+                    matches += 1
+
+                # Daily (pink) if template columns exist
+                if s is not None:
+                    # Hours
+                    if AH1: ws.cell(row=r, column=AH1).value = _num(s.get("PC_HRS_MON", 0))
+                    if AH2: ws.cell(row=r, column=AH2).value = _num(s.get("PC_HRS_TUE", 0))
+                    if AH3: ws.cell(row=r, column=AH3).value = _num(s.get("PC_HRS_WED", 0))
+                    if AH4: ws.cell(row=r, column=AH4).value = _num(s.get("PC_HRS_THU", 0))
+                    if AH5: ws.cell(row=r, column=AH5).value = _num(s.get("PC_HRS_FRI", 0))
+                    # Amounts
+                    if AI1: ws.cell(row=r, column=AI1).value = _num(s.get("PC_TTL_MON", 0))
+                    if AI2: ws.cell(row=r, column=AI2).value = _num(s.get("PC_TTL_TUE", 0))
+                    if AI3: ws.cell(row=r, column=AI3).value = _num(s.get("PC_TTL_WED", 0))
+                    if AI4: ws.cell(row=r, column=AI4).value = _num(s.get("PC_TTL_THU", 0))
+                    if AI5: ws.cell(row=r, column=AI5).value = _num(s.get("PC_TTL_FRI", 0))
+
+                # Row total formula safeguard (=REG+OT+DT) if template cell has no formula
+                if tot_col and regL and otL and dtL:
+                    c = ws.cell(row=r, column=tot_col)
+                    if not (isinstance(c.value, str) and c.value.startswith("=")):
+                        c.value = f"={regL}{r}+{otL}{r}+{dtL}{r}"
+
+            wb.save(output_path)
+
+            total_hours = float(df[["REGULAR", "OVERTIME", "DOUBLETIME"]].sum().sum()) if not df.empty else 0.0
+            return {"success": True, "employees": len(order), "hours": total_hours}
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
