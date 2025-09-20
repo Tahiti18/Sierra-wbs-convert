@@ -1,4 +1,4 @@
-# improved_converter.py — FINAL (template-locked, SSN-as-text, Totals$ formula)
+# improved_converter.py — FINAL (template-locked, SSN-as-text, Totals$ formula, pink block prefill)
 from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
@@ -9,6 +9,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.workbook.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
+# Paths
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 ORDER_TXT = DATA / "gold_master_order.txt"
@@ -16,6 +17,7 @@ ROSTER_CSV = DATA / "gold_master_roster.csv"
 TEMPLATE_XLSX = DATA / "wbs_template.xlsx"
 TARGET_SHEET = "WEEKLY"
 
+# ------------- helpers -------------
 def _norm(s: str) -> str:
     return (s or "").strip().lower()
 
@@ -45,8 +47,8 @@ def _load_order(path: Optional[Path] = None) -> List[str]:
 
 def _find_header_row(ws: Worksheet) -> Tuple[int, Dict[str, int]]:
     """
-    Find the row containing 'Employee Name' (spelled out headers), build a column map.
-    This preserves your template’s headings and the A01/A02/… code row below.
+    Finds the spelled-out header row that contains 'Employee Name' and builds a column map.
+    Preserves your template headings and the A01/A02/... code row below.
     """
     cmap: Dict[str, int] = {}
     for r in range(1, min(ws.max_row, 200) + 1):
@@ -54,48 +56,39 @@ def _find_header_row(ws: Worksheet) -> Tuple[int, Dict[str, int]]:
         low = [_norm(v).replace(" ", "") for v in labels]
         if "employeename" in low:
             for i, v in enumerate(labels, start=1):
-                k0 = _norm(v).replace(" ", "")
-                if k0 == "employeename": cmap["Employee Name"] = i
-                elif k0 in ("ssn","socialsecuritynumber","socialsecurity#","socialsecurityno"): cmap["SSN"] = i
-                elif k0 == "status": cmap["Status"] = i
-                elif k0 == "type": cmap["Type"] = i
-                elif k0 in ("payrate","pay","payrate:"): cmap["Pay Rate"] = i
-                elif k0 in ("dept","department"): cmap["Dept"] = i
-                elif k0 == "regular": cmap["REGULAR"] = i
-                elif k0 in ("overtime","ot"): cmap["OVERTIME"] = i
-                elif k0 in ("doubletime","doubletime"): cmap["DOUBLETIME"] = i
-                elif k0 == "vacation": cmap["VACATION"] = i
-                elif k0 == "sick": cmap["SICK"] = i
-                elif k0 == "holiday": cmap["HOLIDAY"] = i
-                elif k0 == "bonus": cmap["BONUS"] = i
-                elif k0 == "commission": cmap["COMMISSION"] = i
-                elif k0 in ("totals","total","sum"): cmap["Totals"] = i
-                # daily pink (if present in template)
-                elif k0 == "pchrsmon": cmap["AH1"] = i
-                elif k0 == "pcttlmon": cmap["AI1"] = i
-                elif k0 == "pchrstue": cmap["AH2"] = i
-                elif k0 == "pcttltue": cmap["AI2"] = i
-                elif k0 == "pchrswed": cmap["AH3"] = i
-                elif k0 == "pcttlwed": cmap["AI3"] = i
-                elif k0 == "pchrsthu": cmap["AH4"] = i
-                elif k0 == "pcttlthu": cmap["AI4"] = i
-                elif k0 == "pchrsfri": cmap["AH5"] = i
-                elif k0 == "pcttlfri": cmap["AI5"] = i
+                key = _norm(v).replace(" ", "")
+                if key == "employeename": cmap["Employee Name"] = i
+                elif key in ("ssn","socialsecuritynumber","socialsecurity#","socialsecurityno"): cmap["SSN"] = i
+                elif key == "status": cmap["Status"] = i
+                elif key == "type": cmap["Type"] = i
+                elif key in ("payrate","payrate:","pay","payrate."): cmap["Pay Rate"] = i
+                elif key in ("dept","department"): cmap["Dept"] = i
+                elif key == "regular": cmap["REGULAR"] = i
+                elif key in ("overtime","ot"): cmap["OVERTIME"] = i
+                elif key in ("doubletime","doubletime"): cmap["DOUBLETIME"] = i
+                elif key == "vacation": cmap["VACATION"] = i
+                elif key == "sick": cmap["SICK"] = i
+                elif key == "holiday": cmap["HOLIDAY"] = i
+                elif key == "bonus": cmap["BONUS"] = i
+                elif key == "commission": cmap["COMMISSION"] = i
+                elif key in ("totals","total","sum"): cmap["Totals"] = i
             return r, cmap
     raise ValueError("Template header row containing 'Employee Name' was not found.")
 
 def _first_data_row(h: int) -> int:
     return h + 1
 
+# ------------- converter -------------
 class SierraToWBSConverter:
     """
     Template-locked converter that:
-      • Keeps exact template layout/headers (including the A01/A02/… code row and pink block)
+      • Keeps exact template layout/headers (including A01/A02/… row and pink block)
       • Fills SSN/Status/Type/Dept/Pay Rate from roster
       • Fills REG/OT/DT from Sierra
-      • Forces SSN as TEXT (keeps leading zeros)
+      • Forces SSN TEXT (keeps leading zeros)
       • Injects Totals$ formula per row (Salary/Commission vs Hourly)
       • Preserves employee order from gold_master_order.txt
+      • Prefills pink “PC … / TTL … / ATE” columns with zeros so they’re never blank
     """
     def __init__(self, gold_master_order_path: str | None = None):
         self.gold_master_order: List[str] = []
@@ -118,7 +111,7 @@ class SierraToWBSConverter:
         if df.empty:
             return pd.DataFrame(columns=["Name","REGULAR","OVERTIME","DOUBLETIME","Hours","__canon"])
 
-        # Remove duplicated header row if present
+        # Remove duplicate header row if present
         if "Employee Name" in df.columns and str(df.iloc[0].get("Employee Name","")).strip() == "Employee Name":
             df = df.iloc[1:].copy()
 
@@ -151,7 +144,7 @@ class SierraToWBSConverter:
         return out.reset_index(drop=True)
 
     def _load_roster(self) -> Dict[str, Dict[str, str]]:
-        """Return canonical_name -> {ssn,status,type,dept,pay_rate} from /data/gold_master_roster.csv"""
+        """Return canonical_name -> {ssn,status,type,dept,pay_rate} from data/gold_master_roster.csv"""
         if not ROSTER_CSV.exists():
             print(f"[WARN] Roster not found: {ROSTER_CSV}")
             return {}
@@ -175,7 +168,7 @@ class SierraToWBSConverter:
         stat_col = col("status")
         type_col = col("type")
         dept_col = col("dept","department")
-        rate_col = col("payrate","payrate:","pay","pay rate")
+        rate_col = col("payrate","payrate:","pay","payrate")
 
         if not name_col:
             print("[WARN] Roster missing Employee Name column.")
@@ -201,9 +194,9 @@ class SierraToWBSConverter:
           • Names in gold order
           • SSN/Status/Type/Dept/Rate from roster
           • REG/OT/DT from Sierra
-          • SSN as text (leading zeros kept)
-          • Totals$ formula per row (Salary/Commission vs Hourly)
-          • Prefill pink region with zeros (never empty)
+          • SSN as TEXT (keeps leading zeros)
+          • Totals$ formula per row (S/C -> PayRate; H -> PayRate*(REG+1.5*OT+2*DT))
+          • Prefill pink region with zeros so it’s never blank
         """
         try:
             order = self.gold_master_order or _load_order()
@@ -241,7 +234,7 @@ class SierraToWBSConverter:
             com_col  = cmap.get("COMMISSION")
             tot_col  = cmap.get("Totals")
 
-            # Pink block columns (if present). We’ll prefill zeros so it’s never blank.
+            # Identify pink block columns by the code row (one row below spelled-out headers)
             code_row_idx = h + 1
             code_row_vals = [str(c.value).strip().upper() if c.value is not None else "" for c in ws[code_row_idx]]
             pink_cols = []
@@ -249,15 +242,15 @@ class SierraToWBSConverter:
                 if label in {"AH1","AI1","AH2","AI2","AH3","AI3","AH4","AI4","AH5","AI5","ATE"}:
                     pink_cols.append(idx)
 
-            # Prefill zeros in data area of pink block
+            # Prefill zeros in pink region for a safe, non-blank right section
             max_rows_to_write = max(len(order), 120)
             for r in range(start, start + max_rows_to_write):
                 for cidx in pink_cols:
-                    c = ws.cell(row=r, column=cidx)
-                    if c.value in (None, ""):
-                        c.value = 0
+                    cell = ws.cell(row=r, column=cidx)
+                    if cell.value in (None, ""):
+                        cell.value = 0
 
-            # Column letters for formulas
+            # Letters for formulas
             rateL = get_column_letter(rate_col) if rate_col else None
             typeL = get_column_letter(type_col) if type_col else None
             regL  = get_column_letter(reg_col)  if reg_col  else None
@@ -273,7 +266,7 @@ class SierraToWBSConverter:
                 s = sierra_map.get(k)
                 ro = roster.get(k, {})
 
-                # SSN as TEXT to preserve leading zeros
+                # SSN TEXT to preserve leading zeros
                 if ssn_col:
                     ssn_val = (ro.get("ssn", "") or "").strip()
                     c = ws.cell(row=r, column=ssn_col)
@@ -281,8 +274,8 @@ class SierraToWBSConverter:
                     c.value = ssn_val
 
                 if stat_col: ws.cell(row=r, column=stat_col).value = (ro.get("status","") or "A")
-                if type_col: ws.cell(row=r, column=type_col).value = (ro.get("type","") or "H")
-                if dept_col: ws.cell(row=r, column=dept_col).value = ro.get("dept","")
+                if type_col: ws.cell(row=r, column=type_col).value  = (ro.get("type","") or "H")
+                if dept_col: ws.cell(row=r, column=dept_col).value  = ro.get("dept","")
 
                 if rate_col:
                     try:
@@ -299,15 +292,15 @@ class SierraToWBSConverter:
                 if ot_col:  ws.cell(row=r, column=ot_col).value  = ot
                 if dt_col:  ws.cell(row=r, column=dt_col).value  = dt
 
-                # Zero-out optional accrual/bonus/commission if cell empty
+                # Zero optional accrual/bonus/commission if empty
                 for cidx in [vac_col, sick_col, hol_col, bon_col, com_col]:
                     if cidx:
                         cell = ws.cell(row=r, column=cidx)
                         if cell.value in (None, ""):
                             cell.value = 0
 
-                # Inject Totals$ formula per row:
-                # IF(Type="S", PayRate, IF(Type="C", PayRate, PayRate*(REG + 1.5*OT + 2*DT)))
+                # Per-row Totals $ formula:
+                # IF(UPPER(Type)="S", PayRate, IF(UPPER(Type)="C", PayRate, PayRate*(REG + 1.5*OT + 2*DT)))
                 if tot_col and rateL and typeL and regL and otL and dtL:
                     formula = (
                         f'=IF(UPPER({typeL}{r})="S",{rateL}{r},'
