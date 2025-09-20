@@ -1,230 +1,313 @@
-# src/main.py
-import os
-import sys
-import traceback
+# improved_converter.py — robust Sierra → WBS converter (final)
+from __future__ import annotations
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Dict, List, Tuple
+import re
+import pandas as pd
+from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.workbook.workbook import Workbook
+from openpyxl.worksheet.worksheet import Worksheet
 
-from flask import Flask, jsonify, request, send_file, send_from_directory
-from flask_cors import CORS
-from werkzeug.utils import secure_filename
+# ---------- repo paths ----------
+ROOT = Path(__file__).resolve().parent
+DATA = ROOT / "data"
+ORDER_TXT = DATA / "gold_master_order.txt"
+ROSTER_CSV = DATA / "gold_master_roster.csv"
+TEMPLATE_XLSX = DATA / "wbs_template.xlsx"
+TARGET_SHEET = "WEEKLY"
 
-# --- Resolve paths (repo root, /src, /data) ---
-HERE = Path(__file__).resolve().parent
-REPO_ROOT = HERE.parent if HERE.name == "src" else HERE
-DATA_DIR = REPO_ROOT / "data"
+# ---------- small helpers ----------
+def _norm(s) -> str:
+    return ("" if s is None else str(s)).strip().lower()
 
-# Make sure we can import modules placed at repo root (improved_converter.py)
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+def _canon_name(s) -> str:
+    s = ("" if s is None else str(s)).strip()
+    s = re.sub(r"\s+", " ", s)
+    s = s.replace(".", "")
+    s = re.sub(r"\s*,\s*", ", ", s)
+    s = s.replace(" ,", ",")
+    return s.lower()
 
-# Import converter (must exist at repo root as improved_converter.py)
-try:
-    from improved_converter import SierraToWBSConverter  # type: ignore
-except Exception as e:
-    print("[BOOT] Failed to import improved_converter:", e)
-    raise
-
-# --- Flask app ---
-app = Flask(
-    __name__,
-    static_folder=str((REPO_ROOT / "src" / "static") if (REPO_ROOT / "src" / "static").exists() else REPO_ROOT / "static"),
-)
-app.config["SECRET_KEY"] = "sierra-payroll-secret-key-2024"
-app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB
-
-# Uploads
-UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/tmp/uploads"))
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-app.config["UPLOAD_FOLDER"] = str(UPLOAD_DIR)
-
-# CORS
-CORS(app)
-
-ALLOWED_EXTENSIONS = {"xlsx", "xls"}
-
-# --- Converter boot with gold order path (optional but preferred) ---
-GOLD_ORDER = DATA_DIR / "gold_master_order.txt"
-converter = SierraToWBSConverter(str(GOLD_ORDER) if GOLD_ORDER.exists() else None)
-
-def _ok_file(filename: str) -> bool:
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
-
-# ---------- ROUTES ----------
-
-@app.route("/api/health", methods=["GET"])
-def health() -> tuple:
-    """Simple health + config check."""
+def _num(v) -> float:
     try:
-        # probe data files presence (FYI only; not required to run)
-        roster_path = DATA_DIR / "gold_master_roster.csv"
-        template_path = DATA_DIR / "wbs_template.xlsx"
-        return jsonify({
-            "status": "ok",
-            "version": "2.0.0",
-            "gold_master_loaded": bool(getattr(converter, "gold_master_order", [])),
-            "gold_master_count": len(getattr(converter, "gold_master_order", [])),
-            "has_roster_csv": roster_path.exists(),
-            "has_template": template_path.exists(),
-            "upload_folder": app.config.get("UPLOAD_FOLDER"),
-        }), 200
-    except Exception as e:
-        return jsonify({"status": "degraded", "error": str(e)}), 200
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            return 0.0
+        return float(v)
+    except Exception:
+        return 0.0
 
+def _load_order(path: Path = ORDER_TXT) -> List[str]:
+    if not path.exists():
+        return []
+    return [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
 
-@app.route("/api/employees", methods=["GET"])
-def employees() -> tuple:
-    """Expose the gold-master order as an employee list (masked SSNs unless roster present)."""
-    try:
-        names = list(getattr(converter, "gold_master_order", [])) or []
-        roster_csv = DATA_DIR / "gold_master_roster.csv"
-        roster: Dict[str, Dict[str, str]] = {}
-        if roster_csv.exists():
-            # Lightweight load w/o pandas dependency here
-            import csv
-            def _canon(s: str) -> str:
-                s = (s or "").strip()
-                return " ".join(s.replace(".", "").replace(" ,", ",").replace(",", ", ").split()).lower()
-            with roster_csv.open("r", encoding="utf-8") as f:
-                r = csv.DictReader(f)
-                for row in r:
-                    nm = row.get("Employee Name") or row.get("EmployeeName") or row.get("Name") or ""
-                    roster[_canon(nm)] = row
+# ---------- template header location ----------
+def _find_header_row(ws: Worksheet) -> Tuple[int, Dict[str, int]]:
+    """
+    Scan first ~150 rows; map canonical column names to indexes.
+    We require an 'Employee Name' cell in the header band.
+    """
+    cmap: Dict[str, int] = {}
+    for r in range(1, min(ws.max_row, 150) + 1):
+        labels = [str(c.value).strip() if c.value is not None else "" for c in ws[r]]
+        joined = "|".join(_norm(v).replace(" ", "") for v in labels)
+        if "employeename" in joined:
+            # build column map
+            for i, raw in enumerate(labels, start=1):
+                k = _norm(raw)
+                k0 = k.replace(" ", "")
+                if k0 in ("employeename", "name"):
+                    cmap["Employee Name"] = i
+                elif k0 in ("ssn", "socialsecuritynumber", "socialsecurity#", "socialsecurityno"):
+                    cmap["SSN"] = i
+                elif k0 in ("status",):
+                    cmap["Status"] = i
+                elif k0 in ("type",):
+                    cmap["Type"] = i
+                elif k0 in ("dept", "department"):
+                    cmap["Dept"] = i
+                elif k0 in ("payrate", "pay", "payrate:"):
+                    cmap["Pay Rate"] = i
+                elif k0 == "regular":
+                    cmap["REGULAR"] = i
+                elif k0 in ("overtime", "ot"):
+                    cmap["OVERTIME"] = i
+                elif k0 in ("doubletime", "doubletime", "double time"):
+                    cmap["DOUBLETIME"] = i
+                elif k0 in ("totals", "total", "sum"):
+                    cmap["Totals"] = i
+            if "Employee Name" in cmap:
+                return r, cmap
+    raise ValueError("Template scan failed: could not locate the header row containing 'Employee Name'.")
 
-        out = []
-        for i, nm in enumerate(names, start=1):
-            ssn = "***-**-{:04d}".format(i)  # masked fallback
-            if roster:
-                key = " ".join(nm.replace(".", "").replace(" ,", ",").replace(",", ", ").split()).lower()
-                r = roster.get(key, {})
-                raw = (r.get("SSN") or r.get("ssn") or "").strip()
-                if raw:
-                    # mask if it looks like 9 digits
-                    raw_digits = "".join(ch for ch in raw if ch.isdigit())
-                    if len(raw_digits) == 9:
-                        ssn = f"***-**-{raw_digits[-4:]}"
-                    else:
-                        ssn = raw  # leave as-is if not 9 digits
-            out.append({
-                "id": i,
-                "name": nm,
-                "ssn": ssn,
-                "department": r.get("Dept") if roster and (r := roster.get(key, {})) else "UNKNOWN",
-                "status": (r.get("Status") or "A") if roster and r else "A",
-                "pay_rate": float(r.get("Pay Rate") or r.get("PayRate") or 0.0) if roster and r else 0.0,
-            })
-        return jsonify(out), 200
-    except Exception as e:
-        app.logger.error("employees route failed: %s", e)
-        return jsonify({"error": str(e)}), 500
+def _first_data_row(hdr_row: int) -> int:
+    return hdr_row + 1
 
+# ---------- converter ----------
+class SierraToWBSConverter:
+    """
+    Robust Sierra → WBS converter.
+    - Accepts WEEKLY sheet or first sheet.
+    - Detects header row at row 8 (classic) or scans row 1 if needed.
+    - Tolerates column aliasing (REGULAR/OVERTIME/DOUBLETIME variants).
+    - Fills roster fields from gold_master_roster.csv.
+    - Locks output order to gold_master_order.txt.
+    - Preserves template formatting and writes the pink 'Totals' formula if missing.
+    """
 
-@app.route("/api/validate-sierra-file", methods=["POST"])
-def validate_sierra_file() -> tuple:
-    """Parse the uploaded Sierra file robustly and return employee + hours summary."""
-    try:
-        if "file" not in request.files:
-            return jsonify({"valid": False, "error": "No file provided", "employees": 0, "total_hours": 0.0}), 400
+    def __init__(self, gold_master_order_path: str | None = None):
+        # for /health logging in main.py
+        path = Path(gold_master_order_path) if gold_master_order_path else ORDER_TXT
+        self.gold_master_order: List[str] = _load_order(path)
 
-        f = request.files["file"]
-        if not f.filename:
-            return jsonify({"valid": False, "error": "No file selected", "employees": 0, "total_hours": 0.0}), 400
-        if not _ok_file(f.filename):
-            return jsonify({"valid": False, "error": "File must be .xlsx or .xls", "employees": 0, "total_hours": 0.0}), 400
-
-        tmp_name = secure_filename(f"validate_{f.filename}")
-        tmp_path = UPLOAD_DIR / tmp_name
-        f.save(str(tmp_path))
-
-        try:
-            df = converter.parse_sierra_file(str(tmp_path))
-            if df is None or df.empty:
-                return jsonify({"valid": False, "error": "No rows detected", "employees": 0, "total_hours": 0.0}), 200
-
-            # Total hours = REGULAR + OVERTIME + DOUBLETIME (row-wise then summed)
-            hours_cols = [c for c in ["REGULAR", "OVERTIME", "DOUBLETIME"] if c in df.columns]
-            df["__row_total"] = df[hours_cols].sum(axis=1) if hours_cols else 0.0
-            total_hours = float(df["__row_total"].sum())
-            unique_emps = int(df["Name"].astype(str).str.strip().str.lower().nunique())
-
-            return jsonify({
-                "valid": True,
-                "employees": unique_emps,
-                "total_hours": total_hours,
-                "total_entries": int(len(df)),
-                "sample_names": list(df["Name"].astype(str).head(10))
-            }), 200
-        finally:
+    # ---------- used by /validate and /process ----------
+    def parse_sierra_file(self, input_path: str) -> pd.DataFrame:
+        """
+        Returns DataFrame with: Name, REGULAR, OVERTIME, DOUBLETIME, Hours, __canon
+        Never raises on shape — produces empty DF if truly unreadable.
+        """
+        # Try WEEKLY, header at row 8 (0-indexed 7)
+        def _try_read(sheet, header):
             try:
-                tmp_path.unlink(missing_ok=True)
+                return pd.read_excel(input_path, sheet_name=sheet, header=header).dropna(how="all")
             except Exception:
-                pass
+                return None
 
-    except Exception as e:
-        app.logger.error("validate_sierra_file failed: %s\n%s", e, traceback.format_exc())
-        return jsonify({"valid": False, "error": str(e), "employees": 0, "total_hours": 0.0}), 200
+        df = _try_read("WEEKLY", 7)
+        if df is None or "Employee Name" not in df.columns:
+            # try first sheet, same header row
+            df = _try_read(0, 7)
+        if df is None:
+            # last resort: first sheet, header row 0
+            df = _try_read(0, 0)
+        if df is None:
+            return pd.DataFrame(columns=["Name", "REGULAR", "OVERTIME", "DOUBLETIME", "Hours", "__canon"])
 
+        # Some exports repeat the header in the first data row — drop it
+        if not df.empty and "Employee Name" in df.columns and str(df.iloc[0].get("Employee Name", "")).strip() == "Employee Name":
+            df = df.iloc[1:]
 
-@app.route("/api/process-payroll", methods=["POST"])
-def process_payroll() -> tuple:
-    """Run full conversion and return the resulting WBS file."""
-    try:
-        if "file" not in request.files:
-            return jsonify({"error": "No file provided"}), 400
+        # pick the Name column
+        name_col = None
+        for cand in ["Employee Name", "Name", "Unnamed: 2"]:
+            if cand in df.columns:
+                name_col = cand
+                break
+        if not name_col:
+            # scan any column that looks like names
+            for c in df.columns:
+                if re.search(r"name", str(c), re.I):
+                    name_col = c
+                    break
+        if not name_col:
+            return pd.DataFrame(columns=["Name", "REGULAR", "OVERTIME", "DOUBLETIME", "Hours", "__canon"])
 
-        f = request.files["file"]
-        if not f.filename:
-            return jsonify({"error": "No file selected"}), 400
-        if not _ok_file(f.filename):
-            return jsonify({"error": "File must be .xlsx or .xls"}), 400
+        out = pd.DataFrame({"Name": df[name_col].astype(str).str.strip()})
+        out = out[out["Name"].str.len() > 0]
 
-        in_name = secure_filename(f.filename)
-        in_path = UPLOAD_DIR / in_name
-        f.save(str(in_path))
+        def to_num(series_like):
+            return pd.to_numeric(series_like, errors="coerce").fillna(0.0)
 
-        out_name = f"WBS_Payroll_{Path(in_name).stem}.xlsx"
-        out_path = UPLOAD_DIR / out_name
+        # map possible hour columns
+        alias = {
+            "REGULAR":   ["REGULAR", "Regular", "A01"],
+            "OVERTIME":  ["OVERTIME", "Overtime", "OT", "A02"],
+            "DOUBLETIME":["DOUBLETIME", "Double Time", "DOUBLE TIME", "A03"],
+        }
+        for dst, srcs in alias.items():
+            col = next((c for c in srcs if c in df.columns), None)
+            out[dst] = to_num(df[col]) if col else 0.0
 
-        # Execute conversion (converter enforces totals column formula if template cell is blank)
-        result: Dict = converter.convert(str(in_path), str(out_path))
+        out["Hours"] = out[["REGULAR", "OVERTIME", "DOUBLETIME"]].sum(axis=1)
+        out["__canon"] = out["Name"].map(_canon_name)
 
-        # cleanup input
+        # strip obviously non-employee rows
+        bad = ("signature", "certify", "gross", "week of", "prepared by")
+        out = out[~out["Name"].str.lower().str.contains("|".join(bad), regex=True, na=False)]
+        out.reset_index(drop=True, inplace=True)
+        return out
+
+    def _load_roster(self) -> Dict[str, Dict[str, str]]:
+        """
+        Read gold_master_roster.csv → canonical name map with ssn/status/type/department/pay_rate
+        If missing, return {} (converter will still run using hours only).
+        """
+        if not ROSTER_CSV.exists():
+            print(f"[WARN] Roster not found: {ROSTER_CSV}")
+            return {}
+
         try:
-            in_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+            df = pd.read_csv(ROSTER_CSV)
+        except Exception as e:
+            print(f"[WARN] Failed to read roster CSV: {e}")
+            return {}
 
-        if not result.get("success"):
-            return jsonify({"error": result.get("error", "Conversion failed")}), 422
+        # normalize header names (accept loose variations)
+        header_map = {c: _norm(c).replace(" ", "") for c in df.columns}
 
-        # Stream file back
-        return send_file(
-            str(out_path),
-            as_attachment=True,
-            download_name=out_name,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        def pick(*aliases):
+            al = [a.replace(" ", "").lower() for a in aliases]
+            for c, key in header_map.items():
+                if key in al:
+                    return c
+            return None
 
-    except Exception as e:
-        app.logger.error("process_payroll failed: %s\n%s", e, traceback.format_exc())
-        return jsonify({"error": str(e)}), 500
+        name_col = pick("employeename", "name")
+        ssn_col  = pick("ssn", "socialsecuritynumber", "socialsecurity#", "socialsecurityno")
+        stat_col = pick("status")
+        type_col = pick("type")
+        dept_col = pick("dept", "department")
+        rate_col = pick("payrate", "payrate:", "pay", "pay rate")
 
+        if not name_col:
+            print("[WARN] Roster missing an 'Employee Name' column.")
+            return {}
 
-# ---------- Static passthrough for single-page app builds ----------
-@app.route("/", defaults={"path": ""})
-@app.route("/<path:path>")
-def serve_spa(path: Optional[str] = ""):
-    static_dir = Path(app.static_folder) if app.static_folder else None
-    if static_dir and path and (static_dir / path).exists():
-        return send_from_directory(str(static_dir), path)
-    index_path = static_dir / "index.html" if static_dir else None
-    if index_path and index_path.exists():
-        return send_from_directory(str(static_dir), "index.html")
-    return "OK", 200
+        out: Dict[str, Dict[str, str]] = {}
+        for _, r in df.iterrows():
+            nm = str(r.get(name_col, "")).strip()
+            if not nm:
+                continue
+            key = _canon_name(nm)
+            out[key] = {
+                "ssn": "" if ssn_col is None or pd.isna(r.get(ssn_col)) else str(r.get(ssn_col)).strip(),
+                "status": "" if stat_col is None or pd.isna(r.get(stat_col)) else str(r.get(stat_col)).strip(),
+                "type": "" if type_col is None or pd.isna(r.get(type_col)) else str(r.get(type_col)).strip(),
+                "dept": "" if dept_col is None or pd.isna(r.get(dept_col)) else str(r.get(dept_col)).strip(),
+                "pay_rate": "" if rate_col is None or pd.isna(r.get(rate_col)) else str(r.get(rate_col)).strip(),
+            }
 
+        if not out:
+            print("[WARN] Roster parsed but produced 0 rows after normalization.")
+        return out
 
-if __name__ == "__main__":
-    print("Starting Sierra Payroll System...")
-    print(f"Gold Master Order loaded: {len(getattr(converter, 'gold_master_order', []))} employees")
-    port = int(os.environ.get("PORT", "8080"))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    # ---------- main entry ----------
+    def convert(self, input_path: str, output_path: str) -> Dict:
+        """
+        Fill the template with roster + hours and save to output_path.
+        """
+        try:
+            order = self.gold_master_order[:] or _load_order()
+            if not order:
+                return {"success": False, "error": "gold_master_order.txt missing/empty"}
+
+            sierra_df = self.parse_sierra_file(input_path)
+            sierra_map = {row["__canon"]: row for _, row in sierra_df.iterrows()}
+            roster = self._load_roster()
+
+            if not TEMPLATE_XLSX.exists():
+                return {"success": False, "error": f"Template not found: {TEMPLATE_XLSX}"}
+
+            wb: Workbook = load_workbook(TEMPLATE_XLSX, data_only=False)
+            if TARGET_SHEET not in wb.sheetnames:
+                return {"success": False, "error": f"Template missing sheet '{TARGET_SHEET}'"}
+            ws: Worksheet = wb[TARGET_SHEET]
+
+            hdr_row, cmap = _find_header_row(ws)
+            start = _first_data_row(hdr_row)
+
+            name_col = cmap["Employee Name"]
+            ssn_col  = cmap.get("SSN")
+            stat_col = cmap.get("Status")
+            type_col = cmap.get("Type")
+            dept_col = cmap.get("Dept")
+            rate_col = cmap.get("Pay Rate")
+            reg_col  = cmap.get("REGULAR")
+            ot_col   = cmap.get("OVERTIME")
+            dt_col   = cmap.get("DOUBLETIME")
+            tot_col  = cmap.get("Totals")
+
+            regL = get_column_letter(reg_col) if reg_col else None
+            otL  = get_column_letter(ot_col)  if ot_col  else None
+            dtL  = get_column_letter(dt_col)  if dt_col  else None
+
+            matched = 0
+            for i, emp in enumerate(order):
+                r = start + i
+                ws.cell(row=r, column=name_col).value = emp
+
+                key = _canon_name(emp)
+                s   = sierra_map.get(key)
+                ro  = roster.get(key, {})
+
+                # roster fields
+                if ssn_col:  ws.cell(row=r, column=ssn_col).value  = ro.get("ssn", "")
+                if stat_col: ws.cell(row=r, column=stat_col).value = ro.get("status", "") or "A"
+                if type_col: ws.cell(row=r, column=type_col).value = ro.get("type", "") or "H"
+                if dept_col: ws.cell(row=r, column=dept_col).value = ro.get("dept", "")
+
+                if rate_col:
+                    try:
+                        rate_val = float(ro.get("pay_rate", "") or 0.0)
+                    except Exception:
+                        rate_val = 0.0
+                    ws.cell(row=r, column=rate_col).value = rate_val
+
+                # hours
+                reg = _num(s["REGULAR"]) if s is not None else 0.0
+                ot  = _num(s["OVERTIME"]) if s is not None else 0.0
+                dt  = _num(s["DOUBLETIME"]) if s is not None else 0.0
+                if reg_col: ws.cell(row=r, column=reg_col).value = reg
+                if ot_col:  ws.cell(row=r, column=ot_col).value  = ot
+                if dt_col:  ws.cell(row=r, column=dt_col).value  = dt
+                if s is not None:
+                    matched += 1
+
+                # ensure pink totals (only if template cell lacks a formula already)
+                if tot_col:
+                    c = ws.cell(row=r, column=tot_col)
+                    if not (isinstance(c.value, str) and c.value.startswith("=")):
+                        if regL and otL and dtL:
+                            c.value = f"={regL}{r}+{otL}{r}+{dtL}{r}"
+
+            wb.save(output_path)
+
+            total_hours = float(sierra_df[["REGULAR", "OVERTIME", "DOUBLETIME"]].sum().sum()) if not sierra_df.empty else 0.0
+            if matched == 0:
+                print("[WARN] No Sierra rows matched names in gold order after canonicalization.")
+
+            return {"success": True, "employees": len(order), "total_hours": total_hours}
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
