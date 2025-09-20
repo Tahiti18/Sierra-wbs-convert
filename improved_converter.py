@@ -1,94 +1,222 @@
-# improved_converter.py — stable Sierra→WBS using template; fixes totals & headers
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+Improved Sierra → WBS converter
+- Robust parser for Sierra raw timesheets and WBS-like sheets
+- Uses data/gold_master_order.txt for row order
+- Optionally uses data/gold_master_roster.csv for SSN/Status/Type/Dept/Pay Rate
+- Fills an existing template at data/wbs_template.xlsx and preserves formatting
+"""
+
 from __future__ import annotations
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple, Optional
 import re
+
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.workbook.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
+# ---------- paths ----------
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 ORDER_TXT = DATA / "gold_master_order.txt"
-ROSTER_CSV = DATA / "gold_master_roster.csv"
-TEMPLATE_XLSX = DATA / "wbs_template.xlsx"
-TARGET_SHEET = "WEEKLY"
+ROSTER_CSV = DATA / "gold_master_roster.csv"       # optional
+TEMPLATE_XLSX = DATA / "wbs_template.xlsx"         # recommended
+TARGET_SHEET = "WEEKLY"                            # in template
+
+# ---------- helpers ----------
+def _norm(s: str) -> str:
+    return (s or "").strip().lower()
 
 def _canon_name(s: str) -> str:
-    s = "" if s is None else str(s)
-    s = re.sub(r"\s+", " ", s.strip())
+    if not isinstance(s, str):
+        s = "" if s is None else str(s)
+    s = s.strip()
+    s = re.sub(r"\s+", " ", s)
     s = s.replace(".", "")
     s = re.sub(r"\s*,\s*", ", ", s)
+    s = s.replace(" ,", ",")
     return s.lower()
 
 def _num(v) -> float:
     try:
-        if v is None or (isinstance(v, str) and v.strip() == ""):
+        if v is None:
+            return 0.0
+        if isinstance(v, str) and v.strip() == "":
             return 0.0
         return float(v)
     except Exception:
         return 0.0
 
-class SierraToWBSConverter:
-    def __init__(self, gold_master_order_path: str | None = None):
-        path = Path(gold_master_order_path) if gold_master_order_path else ORDER_TXT
-        self.gold_master_order: List[str] = []
-        if path.exists():
-            self.gold_master_order = [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+def _load_order() -> List[str]:
+    if ORDER_TXT.exists():
+        return [ln.strip() for ln in ORDER_TXT.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    return []
 
-    # ---------------- parse Sierra ----------------
+def _pick_column(df: pd.DataFrame, aliases: List[str]) -> Optional[str]:
+    cols = {c: _norm(c).replace(" ", "") for c in df.columns}
+    targets = [a.replace(" ", "").lower() for a in aliases]
+    for c, n in cols.items():
+        if n in targets:
+            return c
+    return None
+
+def _safe_read_xlsx(path: str, sheet, header) -> Optional[pd.DataFrame]:
+    try:
+        df = pd.read_excel(path, sheet_name=sheet, header=header)
+        if isinstance(df, pd.DataFrame):
+            return df.dropna(how="all")
+    except Exception:
+        return None
+    return None
+
+def _best_sheet(path: str) -> Tuple[pd.DataFrame, int]:
+    """
+    Return (df, header_row_used). We try multiple sheet/header combos and pick the
+    frame that actually contains a name column.
+    """
+    tries = [
+        ("WEEKLY", 7), ("WEEKLY", 8),
+        (0, 7), (0, 8),
+        (0, 0), ("WEEKLY", 0),
+    ]
+    candidates: List[Tuple[pd.DataFrame, int]] = []
+    for sheet, header in tries:
+        df = _safe_read_xlsx(path, sheet, header)
+        if df is None or df.empty:
+            continue
+        name_col = _pick_column(df, ["employee name", "name"])
+        if name_col:
+            candidates.append((df, header))
+    if candidates:
+        # choose the widest (most columns) that contains any hours columns
+        def score(item):
+            df, _ = item
+            hits = 0
+            for a in (["regular", "a01"], ["overtime", "ot", "a02"], ["doubletime", "double time", "a03"], ["hours"]):
+                if _pick_column(df, a):
+                    hits += 1
+            return (hits, df.shape[1], df.shape[0])
+        candidates.sort(key=score, reverse=True)
+        return candidates[0]
+    # fallback first sheet header 0
+    df = _safe_read_xlsx(path, 0, 0)
+    if df is None:
+        return pd.DataFrame(), 0
+    return df, 0
+
+def _find_header_row(ws: Worksheet) -> Tuple[int, Dict[str, int]]:
+    """
+    Find header row in the *template* where "Employee Name" exists.
+    Build a column map for SSN, Employee Name, REGULAR, OVERTIME, DOUBLETIME, etc.
+    """
+    cmap: Dict[str, int] = {}
+    for r in range(1, min(ws.max_row, 150) + 1):
+        labels = [str(c.value).strip() if c.value is not None else "" for c in ws[r]]
+        lows = [_norm(v).replace(" ", "") for v in labels]
+        if "employeename" in lows:
+            for i, v in enumerate(labels, start=1):
+                k = _norm(v).replace(" ", "")
+                if k == "employeename":
+                    cmap["Employee Name"] = i
+                elif k in ("ssn", "socialsecuritynumber", "socialsecurity#"):
+                    cmap["SSN"] = i
+                elif k == "status":
+                    cmap["Status"] = i
+                elif k == "type":
+                    cmap["Type"] = i
+                elif k in ("payrate", "pay", "payrate"):
+                    cmap["Pay Rate"] = i
+                elif k in ("dept", "department"):
+                    cmap["Dept"] = i
+                elif k == "regular" or k == "a01":
+                    cmap["REGULAR"] = i
+                elif k in ("overtime", "ot", "a02"):
+                    cmap["OVERTIME"] = i
+                elif k in ("doubletime", "doubletime", "a03"):
+                    cmap["DOUBLETIME"] = i
+                elif k in ("totals", "total", "sum"):
+                    cmap["Totals"] = i
+            return r, cmap
+    raise ValueError("Template header row not found (missing 'Employee Name').")
+
+def _first_data_row(header_row: int) -> int:
+    return header_row + 1
+
+# ---------- converter ----------
+class SierraToWBSConverter:
+    """
+    Public API used by main.py
+    - .gold_master_order is kept for /api/health
+    - parse_sierra_file(): used by /api/validate-sierra-file
+    - convert(): used by /api/process-payroll
+    """
+    def __init__(self, gold_master_order_path: Optional[str] = None):
+        # expose for /health
+        self.gold_master_order: List[str] = []
+        src = Path(gold_master_order_path) if gold_master_order_path else ORDER_TXT
+        if src.exists():
+            self.gold_master_order = [
+                ln.strip()
+                for ln in src.read_text(encoding="utf-8").splitlines()
+                if ln.strip()
+            ]
+
+    # ---------- VALIDATION ----------
     def parse_sierra_file(self, input_path: str) -> pd.DataFrame:
         """
-        Returns DF with columns: Name, REGULAR, OVERTIME, DOUBLETIME, Hours, __canon.
-        Works with WEEKLY sheet (header row 8) or falls back to first sheet.
+        Normalize uploaded Excel into:
+        columns = [Name, REGULAR, OVERTIME, DOUBLETIME, Hours, __canon]
+        Works with Sierra raw timesheets OR WBS-like layouts.
         """
-        def _read(try_weekly=True):
-            if try_weekly:
-                return pd.read_excel(input_path, sheet_name="WEEKLY", header=7).dropna(how="all")
-            return pd.read_excel(input_path, sheet_name=0, header=7).dropna(how="all")
-
-        try:
-            df = _read(True)
-        except Exception:
-            df = _read(False)
-
-        # Occasionally an extra header row is duplicated—skip it
-        if not df.empty and "Employee Name" in df.columns and str(df.iloc[0]["Employee Name"]).strip() == "Employee Name":
-            df = df.iloc[1:]
-
-        # pick name column
-        name_col = None
-        for c in ["Employee Name", "Name", "Unnamed: 2"]:
-            if c in df.columns:
-                name_col = c
-                break
-        if not name_col:
+        df, _hdr = _best_sheet(input_path)
+        if df is None or df.empty:
             return pd.DataFrame(columns=["Name", "REGULAR", "OVERTIME", "DOUBLETIME", "Hours", "__canon"])
 
-        out = pd.DataFrame({"Name": df[name_col].astype(str).str.strip()})
+        # identify columns by aliases
+        name_col = _pick_column(df, ["employee name", "name"])
+        reg_col  = _pick_column(df, ["regular", "a01"])
+        ot_col   = _pick_column(df, ["overtime", "ot", "a02"])
+        dt_col   = _pick_column(df, ["doubletime", "double time", "a03"])
+        hrs_col  = _pick_column(df, ["hours"])  # sometimes present in Sierra raw rows
 
-        # map hours columns with aliases
+        out = pd.DataFrame({"Name": df[name_col].astype(str).str.strip()}) if name_col else pd.DataFrame({"Name": []})
+
         def to_num(series_like):
             return pd.to_numeric(series_like, errors="coerce").fillna(0.0)
 
-        aliases = {
-            "REGULAR":   ["A01", "REGULAR", "Regular"],
-            "OVERTIME":  ["A02", "OVERTIME", "Overtime", "OT"],
-            "DOUBLETIME":["A03", "DOUBLETIME", "Double Time", "DOUBLE TIME"]
-        }
-        for dst, srcs in aliases.items():
-            col = next((c for c in srcs if c in df.columns), None)
-            out[dst] = to_num(df[col]) if col else 0.0
+        # If we have A01/A02/A03 or REG/OT/DT use them; otherwise derive from "Hours"
+        out["REGULAR"]   = to_num(df[reg_col]) if reg_col else 0.0
+        out["OVERTIME"]  = to_num(df[ot_col])  if ot_col  else 0.0
+        out["DOUBLETIME"]= to_num(df[dt_col])  if dt_col  else 0.0
 
-        out["Hours"] = out[["REGULAR", "OVERTIME", "DOUBLETIME"]].sum(axis=1)
-        out = out[out["Name"].str.strip().ne("")]
+        # If all three are zero and there is a plain Hours column, use it as REGULAR
+        if (out[["REGULAR","OVERTIME","DOUBLETIME"]].sum(axis=1) == 0).all() and hrs_col:
+            out["REGULAR"] = to_num(df[hrs_col])
+
+        # strip empties & headers that sometimes repeat inside the sheet
+        out = out[out["Name"].astype(str).str.strip().ne("")]
+        out = out[~out["Name"].str.lower().str.contains(r"^employee\s*name$|^name$", regex=True)]
         out["__canon"] = out["Name"].map(_canon_name)
-        return out.reset_index(drop=True)
+        out["Hours"] = out[["REGULAR","OVERTIME","DOUBLETIME"]].sum(axis=1)
 
-    # ---------------- roster ----------------
+        # If there are obviously too many rows (e.g., 500+ due to template noise),
+        # keep only names that appear in the gold order to avoid bogus counts.
+        order = set(n.lower() for n in (self.gold_master_order or _load_order()))
+        if len(out) > 200 and order:
+            out = out[out["__canon"].isin({_canon_name(n) for n in order})]
+
+        # Final clean
+        out = out[out["Hours"] > 0].reset_index(drop=True)
+        return out
+
+    # ---------- ROSTER ----------
     def _load_roster(self) -> Dict[str, Dict[str, str]]:
+        """Name → {ssn,status,type,dept,pay_rate}, using permissive header aliases. Optional."""
         if not ROSTER_CSV.exists():
             print(f"[WARN] Roster not found: {ROSTER_CSV}")
             return {}
@@ -98,131 +226,138 @@ class SierraToWBSConverter:
             print(f"[WARN] Failed to read roster CSV: {e}")
             return {}
 
-        cols = {c.lower().replace(" ", ""): c for c in df.columns}
-        def pick(*keys):
-            for k in keys:
-                k = k.replace(" ", "").lower()
-                if k in cols: return cols[k]
-            return None
+        def pick(*aliases):
+            return _pick_column(df, list(aliases))
 
-        name_c = pick("employeename", "name")
-        ssn_c  = pick("ssn","socialsecuritynumber","socialsecurity#")
-        stat_c = pick("status")
-        type_c = pick("type")
-        dept_c = pick("dept","department")
-        rate_c = pick("payrate","pay rate","rate")
-        if not name_c:
+        name_col = pick("employee name", "name")
+        ssn_col  = pick("ssn", "social security number", "socialsecurity#", "socialsecurityno")
+        stat_col = pick("status")
+        type_col = pick("type")
+        dept_col = pick("dept", "department")
+        rate_col = pick("pay rate", "payrate", "rate")
+
+        if not name_col:
+            print("[WARN] Roster missing 'Employee Name' column.")
             return {}
 
         out: Dict[str, Dict[str, str]] = {}
         for _, r in df.iterrows():
-            nm = str(r.get(name_c, "")).strip()
-            if not nm: continue
-            key = _canon_name(nm)
-            out[key] = {
-                "ssn":     "" if ssn_c  is None or pd.isna(r.get(ssn_c))  else str(r.get(ssn_c)).strip(),
-                "status":  "" if stat_c is None or pd.isna(r.get(stat_c)) else str(r.get(stat_c)).strip(),
-                "type":    "" if type_c is None or pd.isna(r.get(type_c)) else str(r.get(type_c)).strip(),
-                "dept":    "" if dept_c is None or pd.isna(r.get(dept_c)) else str(r.get(dept_c)).strip(),
-                "payrate": "" if rate_c is None or pd.isna(r.get(rate_c)) else str(r.get(rate_c)).strip(),
+            nm = str(r.get(name_col, "")).strip()
+            if not nm:
+                continue
+            k = _canon_name(nm)
+            def val(c):
+                v = None if c is None else r.get(c)
+                if pd.isna(v):
+                    return ""
+                return str(v).strip()
+            out[k] = {
+                "ssn": val(ssn_col),
+                "status": val(stat_col) or "A",
+                "type": val(type_col) or "H",
+                "dept": val(dept_col),
+                "pay_rate": val(rate_col),
             }
         return out
 
-    # ---------------- convert using template ----------------
+    # ---------- PROCESS ----------
     def convert(self, input_path: str, output_path: str) -> Dict:
+        """
+        Fill data/wbs_template.xlsx keeping formatting.
+        """
         try:
-            order = self.gold_master_order[:]
+            order = self.gold_master_order[:] or _load_order()
             if not order:
                 return {"success": False, "error": "gold_master_order.txt missing/empty"}
 
-            sierra = self.parse_sierra_file(input_path)
-            s_map = {row["__canon"]: row for _, row in sierra.iterrows()}
-            roster = self._load_roster()
+            df = self.parse_sierra_file(input_path)
+            # map Sierra by canonical name
+            sierra_map = {row["__canon"]: row for _, row in df.iterrows()}
+
+            roster = self._load_roster()  # optional; never fails convert()
 
             if not TEMPLATE_XLSX.exists():
                 return {"success": False, "error": f"Template not found: {TEMPLATE_XLSX}"}
+
             wb: Workbook = load_workbook(TEMPLATE_XLSX, data_only=False)
             if TARGET_SHEET not in wb.sheetnames:
-                return {"success": False, "error": f"Template missing '{TARGET_SHEET}'"}
+                return {"success": False, "error": f"Template missing sheet '{TARGET_SHEET}'"}
             ws: Worksheet = wb[TARGET_SHEET]
 
-            # find header row & exact columns by header text
-            header_row = None
-            col_idx = {}
-            for r in range(1, min(ws.max_row, 150)+1):
-                row_vals = [str(c.value).strip() if c.value is not None else "" for c in ws[r]]
-                compact = [v.lower().replace(" ", "") for v in row_vals]
-                if "employeename" in compact and "ssn" in compact:
-                    header_row = r
-                    for i, v in enumerate(row_vals, start=1):
-                        key = v.lower().replace(" ", "")
-                        if key == "ssn": col_idx["SSN"] = i
-                        if key == "employeename": col_idx["Name"] = i
-                        if key == "status": col_idx["Status"] = i
-                        if key == "type": col_idx["Type"] = i
-                        if key in ("payrate","pay"): col_idx["PayRate"] = i
-                        if key in ("dept","department"): col_idx["Dept"] = i
-                        if key == "regular": col_idx["A01"] = i
-                        if key == "overtime": col_idx["A02"] = i
-                        if key == "doubletime": col_idx["A03"] = i
-                        if key == "vacation": col_idx["A06"] = i
-                        if key == "sick": col_idx["A07"] = i
-                        if key == "holiday": col_idx["A08"] = i
-                        if key == "bonus": col_idx["A04"] = i
-                        if key == "commission": col_idx["A05"] = i
-                        if key in ("totals","total"): col_idx["Totals"] = i
-                    break
-            if header_row is None:
-                return {"success": False, "error": "Could not locate header row in template"}
+            header_row, cmap = _find_header_row(ws)
+            start = _first_data_row(header_row)
 
-            start_row = header_row + 1
+            name_col = cmap["Employee Name"]
+            ssn_col  = cmap.get("SSN")
+            reg_col  = cmap.get("REGULAR")
+            ot_col   = cmap.get("OVERTIME")
+            dt_col   = cmap.get("DOUBLETIME")
+            rate_col = cmap.get("Pay Rate")
+            stat_col = cmap.get("Status")
+            type_col = cmap.get("Type")
+            dept_col = cmap.get("Dept")
+            tot_col  = cmap.get("Totals")
 
-            # letters for totals formula
-            regL = get_column_letter(col_idx["A01"])
-            otL  = get_column_letter(col_idx["A02"])
-            dtL  = get_column_letter(col_idx["A03"])
-            totC = col_idx.get("Totals")
+            regL = get_column_letter(reg_col) if reg_col else None
+            otL  = get_column_letter(ot_col)  if ot_col  else None
+            dtL  = get_column_letter(dt_col)  if dt_col  else None
 
-            matches = 0
+            # clear existing body region (up to number of names in order)
+            for i in range(len(order)):
+                r = start + i
+                for c in range(1, ws.max_column + 1):
+                    # don't wipe formatting; set to None only for known data columns
+                    pass  # we will overwrite target cells directly below
+
+            # write rows strictly in gold order
+            matched = 0
             for i, emp in enumerate(order):
-                r = start_row + i
+                r = start + i
+                ws.cell(row=r, column=name_col).value = emp
+
                 key = _canon_name(emp)
-                s = s_map.get(key, None)
+                s = sierra_map.get(key)
                 ro = roster.get(key, {})
 
-                # Names + SSN / meta
-                ws.cell(row=r, column=col_idx["Name"]).value = emp
-                if "SSN"     in col_idx: ws.cell(row=r, column=col_idx["SSN"]).value     = ro.get("ssn","")
-                if "Status"  in col_idx: ws.cell(row=r, column=col_idx["Status"]).value  = (ro.get("status") or "A")
-                if "Type"    in col_idx: ws.cell(row=r, column=col_idx["Type"]).value    = (ro.get("type") or "H")
-                if "Dept"    in col_idx: ws.cell(row=r, column=col_idx["Dept"]).value    = ro.get("dept","")
-                if "PayRate" in col_idx:
-                    try:
-                        ws.cell(row=r, column=col_idx["PayRate"]).value = float(ro.get("payrate","") or 0.0)
-                    except Exception:
-                        ws.cell(row=r, column=col_idx["PayRate"]).value = 0.0
+                if ssn_col:  ws.cell(row=r, column=ssn_col).value  = ro.get("ssn", "")
+                if stat_col: ws.cell(row=r, column=stat_col).value = ro.get("status", "") or "A"
+                if type_col: ws.cell(row=r, column=type_col).value = ro.get("type", "") or "H"
+                if dept_col: ws.cell(row=r, column=dept_col).value = ro.get("dept", "")
 
-                # Hours
+                if rate_col:
+                    try:
+                        rate_val = float(ro.get("pay_rate", "") or 0.0)
+                    except Exception:
+                        rate_val = 0.0
+                    ws.cell(row=r, column=rate_col).value = rate_val
+
                 reg = _num(s["REGULAR"]) if s is not None else 0.0
                 ot  = _num(s["OVERTIME"]) if s is not None else 0.0
                 dt  = _num(s["DOUBLETIME"]) if s is not None else 0.0
-                ws.cell(row=r, column=col_idx["A01"]).value = reg
-                ws.cell(row=r, column=col_idx["A02"]).value = ot
-                ws.cell(row=r, column=col_idx["A03"]).value = dt
 
-                # leave A04..A08, AH1..AI5, ATE, Comments as-is (template defaults)
+                if reg_col: ws.cell(row=r, column=reg_col).value = reg
+                if ot_col:  ws.cell(row=r, column=ot_col).value  = ot
+                if dt_col:  ws.cell(row=r, column=dt_col).value  = dt
+
                 if s is not None:
-                    matches += 1
+                    matched += 1
 
-                # Totals column formula (pink)
-                if totC:
-                    ws.cell(row=r, column=totC).value = f"={regL}{r}+{otL}{r}+{dtL}{r}"
+                # Totals (pink): if template cell lacks a formula, supply =REG+OT+DT
+                if tot_col and regL and otL and dtL:
+                    c = ws.cell(row=r, column=tot_col)
+                    cv = c.value
+                    if not (isinstance(cv, str) and cv.startswith("=")):
+                        c.value = f"={regL}{r}+{otL}{r}+{dtL}{r}"
 
             wb.save(output_path)
 
-            total_hours = float(sierra[["REGULAR","OVERTIME","DOUBLETIME"]].sum().sum()) if not sierra.empty else 0.0
-            if matches == 0:
-                print("[WARN] no names matched gold order after canonicalization")
-            return {"success": True, "employees": len(order), "hours": total_hours}
+            total_hours = float(df[["REGULAR", "OVERTIME", "DOUBLETIME"]].sum().sum()) if not df.empty else 0.0
+            return {
+                "success": True,
+                "employees_processed": len(order),
+                "total_hours": total_hours,
+                "matched": matched
+            }
+
         except Exception as e:
             return {"success": False, "error": str(e)}
