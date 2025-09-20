@@ -1,356 +1,228 @@
-#!/usr/bin/env python3
-"""
-Improved Sierra Payroll to WBS Payroll Converter
-Handles the exact Sierra format and produces accurate WBS output
-"""
-
-import pandas as pd
-import numpy as np
-from datetime import datetime, date
+# improved_converter.py — stable Sierra→WBS using template; fixes totals & headers
+from __future__ import annotations
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 import re
-import io
-from openpyxl import load_workbook, Workbook
+import pandas as pd
+from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
+from openpyxl.workbook.workbook import Workbook
+from openpyxl.worksheet.worksheet import Worksheet
 
+ROOT = Path(__file__).resolve().parent
+DATA = ROOT / "data"
+ORDER_TXT = DATA / "gold_master_order.txt"
+ROSTER_CSV = DATA / "gold_master_roster.csv"
+TEMPLATE_XLSX = DATA / "wbs_template.xlsx"
+TARGET_SHEET = "WEEKLY"
+
+def _canon_name(s: str) -> str:
+    s = "" if s is None else str(s)
+    s = re.sub(r"\s+", " ", s.strip())
+    s = s.replace(".", "")
+    s = re.sub(r"\s*,\s*", ", ", s)
+    return s.lower()
+
+def _num(v) -> float:
+    try:
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            return 0.0
+        return float(v)
+    except Exception:
+        return 0.0
 
 class SierraToWBSConverter:
-    """
-    Converts Sierra payroll Excel files to WBS payroll format with accurate calculations
-    """
-    
-    def __init__(self, gold_master_order_path: Optional[str] = None):
-        self.gold_master_order = []
-        if gold_master_order_path and Path(gold_master_order_path).exists():
-            with open(gold_master_order_path, 'r', encoding='utf-8') as f:
-                self.gold_master_order = [line.strip() for line in f if line.strip()]
-    
-    def normalize_name(self, name: str) -> str:
-        """Normalize employee name format"""
-        if not isinstance(name, str) or not name.strip():
-            return ""
-        
-        # Clean up the name
-        name = re.sub(r'\s+', ' ', name.strip())
-        
-        # If already in "Last, First" format, return as is
-        if ',' in name:
-            return name
-        
-        # Convert "First Last" to "Last, First"
-        parts = name.split()
-        if len(parts) >= 2:
-            return f"{parts[-1]}, {' '.join(parts[:-1])}"
-        
-        return name
-    
-    def parse_sierra_file(self, file_path: str) -> pd.DataFrame:
+    def __init__(self, gold_master_order_path: str | None = None):
+        path = Path(gold_master_order_path) if gold_master_order_path else ORDER_TXT
+        self.gold_master_order: List[str] = []
+        if path.exists():
+            self.gold_master_order = [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+    # ---------------- parse Sierra ----------------
+    def parse_sierra_file(self, input_path: str) -> pd.DataFrame:
         """
-        Parse Sierra payroll Excel file and extract employee time data
+        Returns DF with columns: Name, REGULAR, OVERTIME, DOUBLETIME, Hours, __canon.
+        Works with WEEKLY sheet (header row 8) or falls back to first sheet.
         """
-        # Read the Excel file
-        df = pd.read_excel(file_path, header=0)
-        
-        # Clean column names
-        df.columns = df.columns.str.strip()
-        
-        # Filter out non-data rows
-        # Keep rows where Name is not null and Hours > 0
-        data_rows = df[
-            (df['Name'].notna()) & 
-            (df['Name'].astype(str).str.strip() != '') &
-            (df['Hours'].notna()) & 
-            (pd.to_numeric(df['Hours'], errors='coerce') > 0)
-        ].copy()
-        
-        # Skip signature and other non-employee rows
-        skip_keywords = ['signature', 'certify', 'gross', 'week of', 'by the signature']
-        for keyword in skip_keywords:
-            data_rows = data_rows[
-                ~data_rows['Name'].astype(str).str.lower().str.contains(keyword, na=False)
-            ]
-        
-        # Normalize data types
-        data_rows['Name'] = data_rows['Name'].astype(str).apply(self.normalize_name)
-        data_rows['Hours'] = pd.to_numeric(data_rows['Hours'], errors='coerce').fillna(0.0)
-        data_rows['Rate'] = pd.to_numeric(data_rows['Rate'], errors='coerce').fillna(0.0)
-        data_rows['Total'] = pd.to_numeric(data_rows['Total'], errors='coerce').fillna(0.0)
-        
-        # Parse dates
-        data_rows['Date'] = pd.to_datetime(data_rows['Days'], errors='coerce')
-        
-        return data_rows[data_rows['Hours'] > 0].reset_index(drop=True)
-    
-    def apply_california_overtime_rules(self, employee_data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Apply California overtime rules:
-        - First 8 hours per day: Regular time
-        - Hours 8-12 per day: Overtime (1.5x)
-        - Hours >12 per day: Double time (2x)
-        """
-        results = []
-        
-        # Group by employee and date
-        for (name, date_val), group in employee_data.groupby(['Name', 'Date']):
-            if pd.isna(date_val):
-                # If no date, treat as single day
-                daily_hours = group['Hours'].sum()
-                rate = group['Rate'].iloc[0]  # Use first rate found
-            else:
-                daily_hours = group['Hours'].sum()
-                rate = group['Rate'].iloc[0]
-            
-            # Apply CA daily overtime rules
-            reg_hours = min(daily_hours, 8.0)
-            ot_hours = max(0.0, min(daily_hours - 8.0, 4.0))
-            dt_hours = max(0.0, daily_hours - 12.0)
-            
-            results.append({
-                'Name': name,
-                'Date': date_val,
-                'Rate': rate,
-                'REG_Hours': reg_hours,
-                'OT_Hours': ot_hours,
-                'DT_Hours': dt_hours,
-                'Total_Hours': daily_hours
-            })
-        
-        return pd.DataFrame(results)
-    
-    def aggregate_weekly_data(self, daily_data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Aggregate daily data to weekly totals per employee
-        """
-        # Group by employee and sum hours
-        weekly = daily_data.groupby('Name').agg({
-            'Rate': 'first',  # Use first rate (assuming consistent per employee)
-            'REG_Hours': 'sum',
-            'OT_Hours': 'sum', 
-            'DT_Hours': 'sum',
-            'Total_Hours': 'sum'
-        }).reset_index()
-        
-        # Calculate dollar amounts
-        weekly['REG_Amount'] = weekly['REG_Hours'] * weekly['Rate']
-        weekly['OT_Amount'] = weekly['OT_Hours'] * weekly['Rate'] * 1.5
-        weekly['DT_Amount'] = weekly['DT_Hours'] * weekly['Rate'] * 2.0
-        weekly['Total_Amount'] = weekly['REG_Amount'] + weekly['OT_Amount'] + weekly['DT_Amount']
-        
-        return weekly
-    
-    def sort_employees_by_master_order(self, weekly_data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Sort employees according to gold master order, with new employees at the end
-        """
-        if not self.gold_master_order:
-            return weekly_data.sort_values('Name')
-        
-        # Create order mapping
-        order_map = {name: i for i, name in enumerate(self.gold_master_order)}
-        
-        # Add order column
-        weekly_data['Order'] = weekly_data['Name'].map(
-            lambda x: order_map.get(x, len(self.gold_master_order) + 1000)
-        )
-        
-        # Sort by order, then by name
-        return weekly_data.sort_values(['Order', 'Name']).drop('Order', axis=1)
-    
-    def create_wbs_format(self, weekly_data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Create WBS format DataFrame with all required columns
-        """
-        wbs_data = pd.DataFrame()
-        
-        # Map to WBS column names and add required fields
-        wbs_data['SSN'] = ''  # Will be filled from employee database if available
-        wbs_data['Employee Name'] = weekly_data['Name']
-        wbs_data['Status'] = 'A'  # Active
-        wbs_data['Type'] = 'H'    # Hourly (could be 'S' for salary)
-        wbs_data['Pay Rate'] = weekly_data['Rate'].round(2)
-        wbs_data['Dept'] = ''     # Department - will be filled if available
-        wbs_data['A01'] = weekly_data['REG_Hours'].round(2)  # Regular hours
-        wbs_data['A02'] = weekly_data['OT_Hours'].round(2)   # Overtime hours
-        wbs_data['A03'] = weekly_data['DT_Hours'].round(2)   # Double time hours
-        wbs_data['A06'] = 0.0     # Vacation
-        wbs_data['A07'] = 0.0     # Sick
-        wbs_data['A08'] = 0.0     # Holiday
-        wbs_data['A04'] = 0.0     # Bonus
-        wbs_data['A05'] = 0.0     # Commission
-        wbs_data['REG_$'] = weekly_data['REG_Amount'].round(2)
-        wbs_data['OT_$'] = weekly_data['OT_Amount'].round(2)
-        wbs_data['DT_$'] = weekly_data['DT_Amount'].round(2)
-        wbs_data['TOTAL_$'] = weekly_data['Total_Amount'].round(2)
-        
-        return wbs_data
-    
-    def create_wbs_excel(self, wbs_data: pd.DataFrame, output_path: str) -> None:
-        """
-        Create WBS Excel file with proper formatting and headers
-        """
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "WEEKLY"
-        
-        # WBS Header information
-        current_date = datetime.now()
-        period_end = current_date.strftime("%m/%d/%Y")
-        report_due = current_date.strftime("%m/%d/%Y") 
-        check_date = current_date.strftime("%m/%d/%Y")
-        
-        # Add WBS metadata headers
-        headers = [
-            ["# V", "DO NOT EDIT", "Version = B90216-00", "FmtRev = 2.1", 
-             f"RunTime = {current_date.strftime('%Y%m%d-%H%M%S')}", "CliUnqId = 055269",
-             "CliName = Sierra Roofing and Solar Inc", "Freq = W", f"PEDate = {period_end}",
-             f"RptDate = {report_due}", f"CkDate = {check_date}", "EmpType = SSN",
-             "DoNotes = 1", "PayRates = H+;S+;E+;C+", "RateCol = 6", "T1 = 7+",
-             "CodeBeg = 8", "CodeEnd = 26", "NoteCol = 27"],
-            ["# U", "CliUnqID", "055269"],
-            ["# N", "Client", "Sierra Roofing and Solar Inc"],
-            ["# P", "Period End", period_end],
-            ["# R", "Report Due", report_due],
-            ["# C", "Check Date", check_date],
-            ["# T", "EmployeeID", "SSN"],
-            ["# B:8", "", "", "", "Pay", "", "", "REGULAR", "OVERTIME", "DOUBLETIME",
-             "VACATION", "SICK", "HOLIDAY", "BONUS", "COMMISSION", "PC HRS MON",
-             "PC TTL MON", "PC HRS TUE", "PC TTL TUE", "PC HRS WED", "PC TTL WED",
-             "PC HRS THU", "PC TTL THU", "PC HRS FRI", "PC TTL FRI", "TRAVEL AMOUNT",
-             "Notes and", "Totals"],
-            ["# E:26", "SSN", "Employee Name", "Status", "Type", "Pay Rate", "Dept",
-             "A01", "A02", "A03", "A06", "A07", "A08", "A04", "A05", "AH1", "AI1",
-             "AH2", "AI2", "AH3", "AI3", "AH4", "AI4", "AH5", "AI5", "ATE", "Comments", ""]
-        ]
-        
-        # Write headers
-        for header_row in headers:
-            ws.append(header_row)
-        
-        # Write employee data
-        for _, row in wbs_data.iterrows():
-            ws.append([
-                "",  # Employee ID (will be filled by WBS system)
-                row['SSN'],
-                row['Employee Name'],
-                row['Status'],
-                row['Type'],
-                row['Pay Rate'],
-                row['Dept'],
-                row['A01'],  # Regular hours
-                row['A02'],  # OT hours
-                row['A03'],  # DT hours
-                row['A06'],  # Vacation
-                row['A07'],  # Sick
-                row['A08'],  # Holiday
-                row['A04'],  # Bonus
-                row['A05'],  # Commission
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  # Piecework columns (empty)
-                0,  # Travel amount
-                "",  # Comments
-                row['TOTAL_$']  # Total amount
-            ])
-        
-        # Add totals row
-        totals_row = ["", "", "TOTAL", "", "", "",
-                     wbs_data['A01'].sum(),  # Total regular hours
-                     wbs_data['A02'].sum(),  # Total OT hours  
-                     wbs_data['A03'].sum(),  # Total DT hours
-                     wbs_data['A06'].sum(),  # Total vacation
-                     wbs_data['A07'].sum(),  # Total sick
-                     wbs_data['A08'].sum(),  # Total holiday
-                     wbs_data['A04'].sum(),  # Total bonus
-                     wbs_data['A05'].sum(),  # Total commission
-                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "",  # Piecework and comments
-                     wbs_data['TOTAL_$'].sum()]  # Grand total
-        ws.append(totals_row)
-        
-        # Auto-adjust column widths
-        for column in ws.columns:
-            max_length = 0
-            column_letter = get_column_letter(column[0].column)
-            for cell in column:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = min(max_length + 2, 30)
-            ws.column_dimensions[column_letter].width = adjusted_width
-        
-        # Save workbook
-        wb.save(output_path)
-    
-    def convert(self, sierra_file_path: str, output_path: str) -> Dict:
-        """
-        Main conversion method
-        """
+        def _read(try_weekly=True):
+            if try_weekly:
+                return pd.read_excel(input_path, sheet_name="WEEKLY", header=7).dropna(how="all")
+            return pd.read_excel(input_path, sheet_name=0, header=7).dropna(how="all")
+
         try:
-            # Parse Sierra file
-            sierra_data = self.parse_sierra_file(sierra_file_path)
-            
-            if sierra_data.empty:
-                return {
-                    'success': False,
-                    'error': 'No valid employee data found in Sierra file',
-                    'employees_processed': 0
-                }
-            
-            # Apply overtime rules
-            daily_data = self.apply_california_overtime_rules(sierra_data)
-            
-            # Aggregate to weekly
-            weekly_data = self.aggregate_weekly_data(daily_data)
-            
-            # Sort by master order
-            weekly_data = self.sort_employees_by_master_order(weekly_data)
-            
-            # Create WBS format
-            wbs_data = self.create_wbs_format(weekly_data)
-            
-            # Create Excel file
-            self.create_wbs_excel(wbs_data, output_path)
-            
-            return {
-                'success': True,
-                'employees_processed': len(wbs_data),
-                'total_hours': weekly_data['Total_Hours'].sum(),
-                'total_amount': weekly_data['Total_Amount'].sum(),
-                'regular_hours': weekly_data['REG_Hours'].sum(),
-                'overtime_hours': weekly_data['OT_Hours'].sum(),
-                'doubletime_hours': weekly_data['DT_Hours'].sum()
-            }
-            
+            df = _read(True)
+        except Exception:
+            df = _read(False)
+
+        # Occasionally an extra header row is duplicated—skip it
+        if not df.empty and "Employee Name" in df.columns and str(df.iloc[0]["Employee Name"]).strip() == "Employee Name":
+            df = df.iloc[1:]
+
+        # pick name column
+        name_col = None
+        for c in ["Employee Name", "Name", "Unnamed: 2"]:
+            if c in df.columns:
+                name_col = c
+                break
+        if not name_col:
+            return pd.DataFrame(columns=["Name", "REGULAR", "OVERTIME", "DOUBLETIME", "Hours", "__canon"])
+
+        out = pd.DataFrame({"Name": df[name_col].astype(str).str.strip()})
+
+        # map hours columns with aliases
+        def to_num(series_like):
+            return pd.to_numeric(series_like, errors="coerce").fillna(0.0)
+
+        aliases = {
+            "REGULAR":   ["A01", "REGULAR", "Regular"],
+            "OVERTIME":  ["A02", "OVERTIME", "Overtime", "OT"],
+            "DOUBLETIME":["A03", "DOUBLETIME", "Double Time", "DOUBLE TIME"]
+        }
+        for dst, srcs in aliases.items():
+            col = next((c for c in srcs if c in df.columns), None)
+            out[dst] = to_num(df[col]) if col else 0.0
+
+        out["Hours"] = out[["REGULAR", "OVERTIME", "DOUBLETIME"]].sum(axis=1)
+        out = out[out["Name"].str.strip().ne("")]
+        out["__canon"] = out["Name"].map(_canon_name)
+        return out.reset_index(drop=True)
+
+    # ---------------- roster ----------------
+    def _load_roster(self) -> Dict[str, Dict[str, str]]:
+        if not ROSTER_CSV.exists():
+            print(f"[WARN] Roster not found: {ROSTER_CSV}")
+            return {}
+        try:
+            df = pd.read_csv(ROSTER_CSV)
         except Exception as e:
-            return {
-                'success': False,
-                'error': str(e),
-                'employees_processed': 0
+            print(f"[WARN] Failed to read roster CSV: {e}")
+            return {}
+
+        cols = {c.lower().replace(" ", ""): c for c in df.columns}
+        def pick(*keys):
+            for k in keys:
+                k = k.replace(" ", "").lower()
+                if k in cols: return cols[k]
+            return None
+
+        name_c = pick("employeename", "name")
+        ssn_c  = pick("ssn","socialsecuritynumber","socialsecurity#")
+        stat_c = pick("status")
+        type_c = pick("type")
+        dept_c = pick("dept","department")
+        rate_c = pick("payrate","pay rate","rate")
+        if not name_c:
+            return {}
+
+        out: Dict[str, Dict[str, str]] = {}
+        for _, r in df.iterrows():
+            nm = str(r.get(name_c, "")).strip()
+            if not nm: continue
+            key = _canon_name(nm)
+            out[key] = {
+                "ssn":     "" if ssn_c  is None or pd.isna(r.get(ssn_c))  else str(r.get(ssn_c)).strip(),
+                "status":  "" if stat_c is None or pd.isna(r.get(stat_c)) else str(r.get(stat_c)).strip(),
+                "type":    "" if type_c is None or pd.isna(r.get(type_c)) else str(r.get(type_c)).strip(),
+                "dept":    "" if dept_c is None or pd.isna(r.get(dept_c)) else str(r.get(dept_c)).strip(),
+                "payrate": "" if rate_c is None or pd.isna(r.get(rate_c)) else str(r.get(rate_c)).strip(),
             }
+        return out
 
+    # ---------------- convert using template ----------------
+    def convert(self, input_path: str, output_path: str) -> Dict:
+        try:
+            order = self.gold_master_order[:]
+            if not order:
+                return {"success": False, "error": "gold_master_order.txt missing/empty"}
 
-def main():
-    """Test the converter"""
-    converter = SierraToWBSConverter('/home/ubuntu/upload/sierra_payroll_backend-main/app/data/gold_master_order.txt')
-    
-    result = converter.convert(
-        '/home/ubuntu/upload/SierraPayroll9_19_25forMarwan.xlsx',
-        '/home/ubuntu/test_wbs_output.xlsx'
-    )
-    
-    print("Conversion Result:")
-    print(f"Success: {result['success']}")
-    if result['success']:
-        print(f"Employees processed: {result['employees_processed']}")
-        print(f"Total hours: {result['total_hours']:.2f}")
-        print(f"Regular hours: {result['regular_hours']:.2f}")
-        print(f"Overtime hours: {result['overtime_hours']:.2f}")
-        print(f"Double time hours: {result['doubletime_hours']:.2f}")
-        print(f"Total amount: ${result['total_amount']:.2f}")
-    else:
-        print(f"Error: {result['error']}")
+            sierra = self.parse_sierra_file(input_path)
+            s_map = {row["__canon"]: row for _, row in sierra.iterrows()}
+            roster = self._load_roster()
 
+            if not TEMPLATE_XLSX.exists():
+                return {"success": False, "error": f"Template not found: {TEMPLATE_XLSX}"}
+            wb: Workbook = load_workbook(TEMPLATE_XLSX, data_only=False)
+            if TARGET_SHEET not in wb.sheetnames:
+                return {"success": False, "error": f"Template missing '{TARGET_SHEET}'"}
+            ws: Worksheet = wb[TARGET_SHEET]
 
-if __name__ == "__main__":
-    main()
+            # find header row & exact columns by header text
+            header_row = None
+            col_idx = {}
+            for r in range(1, min(ws.max_row, 150)+1):
+                row_vals = [str(c.value).strip() if c.value is not None else "" for c in ws[r]]
+                compact = [v.lower().replace(" ", "") for v in row_vals]
+                if "employeename" in compact and "ssn" in compact:
+                    header_row = r
+                    for i, v in enumerate(row_vals, start=1):
+                        key = v.lower().replace(" ", "")
+                        if key == "ssn": col_idx["SSN"] = i
+                        if key == "employeename": col_idx["Name"] = i
+                        if key == "status": col_idx["Status"] = i
+                        if key == "type": col_idx["Type"] = i
+                        if key in ("payrate","pay"): col_idx["PayRate"] = i
+                        if key in ("dept","department"): col_idx["Dept"] = i
+                        if key == "regular": col_idx["A01"] = i
+                        if key == "overtime": col_idx["A02"] = i
+                        if key == "doubletime": col_idx["A03"] = i
+                        if key == "vacation": col_idx["A06"] = i
+                        if key == "sick": col_idx["A07"] = i
+                        if key == "holiday": col_idx["A08"] = i
+                        if key == "bonus": col_idx["A04"] = i
+                        if key == "commission": col_idx["A05"] = i
+                        if key in ("totals","total"): col_idx["Totals"] = i
+                    break
+            if header_row is None:
+                return {"success": False, "error": "Could not locate header row in template"}
 
+            start_row = header_row + 1
+
+            # letters for totals formula
+            regL = get_column_letter(col_idx["A01"])
+            otL  = get_column_letter(col_idx["A02"])
+            dtL  = get_column_letter(col_idx["A03"])
+            totC = col_idx.get("Totals")
+
+            matches = 0
+            for i, emp in enumerate(order):
+                r = start_row + i
+                key = _canon_name(emp)
+                s = s_map.get(key, None)
+                ro = roster.get(key, {})
+
+                # Names + SSN / meta
+                ws.cell(row=r, column=col_idx["Name"]).value = emp
+                if "SSN"     in col_idx: ws.cell(row=r, column=col_idx["SSN"]).value     = ro.get("ssn","")
+                if "Status"  in col_idx: ws.cell(row=r, column=col_idx["Status"]).value  = (ro.get("status") or "A")
+                if "Type"    in col_idx: ws.cell(row=r, column=col_idx["Type"]).value    = (ro.get("type") or "H")
+                if "Dept"    in col_idx: ws.cell(row=r, column=col_idx["Dept"]).value    = ro.get("dept","")
+                if "PayRate" in col_idx:
+                    try:
+                        ws.cell(row=r, column=col_idx["PayRate"]).value = float(ro.get("payrate","") or 0.0)
+                    except Exception:
+                        ws.cell(row=r, column=col_idx["PayRate"]).value = 0.0
+
+                # Hours
+                reg = _num(s["REGULAR"]) if s is not None else 0.0
+                ot  = _num(s["OVERTIME"]) if s is not None else 0.0
+                dt  = _num(s["DOUBLETIME"]) if s is not None else 0.0
+                ws.cell(row=r, column=col_idx["A01"]).value = reg
+                ws.cell(row=r, column=col_idx["A02"]).value = ot
+                ws.cell(row=r, column=col_idx["A03"]).value = dt
+
+                # leave A04..A08, AH1..AI5, ATE, Comments as-is (template defaults)
+                if s is not None:
+                    matches += 1
+
+                # Totals column formula (pink)
+                if totC:
+                    ws.cell(row=r, column=totC).value = f"={regL}{r}+{otL}{r}+{dtL}{r}"
+
+            wb.save(output_path)
+
+            total_hours = float(sierra[["REGULAR","OVERTIME","DOUBLETIME"]].sum().sum()) if not sierra.empty else 0.0
+            if matches == 0:
+                print("[WARN] no names matched gold order after canonicalization")
+            return {"success": True, "employees": len(order), "hours": total_hours}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
