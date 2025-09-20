@@ -1,4 +1,4 @@
-# src/main.py — FINAL (safe, matches converter, correct validator totals)
+# src/main.py — FINAL (stable endpoints; pairs with improved_converter.py)
 import os
 import sys
 import traceback
@@ -25,7 +25,7 @@ ALLOWED = {"xlsx","xls"}
 def ok_ext(name:str) -> bool:
     return "." in name and name.rsplit(".",1)[1].lower() in ALLOWED
 
-# one shared converter
+# shared converter
 converter = SierraToWBSConverter(str(ORDER_TXT if ORDER_TXT.exists() else ""))
 
 @app.route('/api/health', methods=['GET'])
@@ -102,7 +102,7 @@ def process_payroll():
         finally:
             try: in_path.unlink(missing_ok=True)
             except Exception: pass
-            # do not remove out_path (streamed to client)
+            # do not remove out_path (it’s being streamed)
     except Exception as e:
         app.logger.error("process error: %s\n%s", str(e), traceback.format_exc())
         return jsonify({"error":str(e)}), 500
