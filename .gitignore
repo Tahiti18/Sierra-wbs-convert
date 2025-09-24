@@ -1,0 +1,20 @@
+
+# Sample and test files
+*.xlsx
+*_sample*.xlsx
+test_*.xlsx
+WBS_Converted_*.xlsx
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+*.log
+
+# Temporary files
+/tmp/
+.DS_Store
+.env
+
