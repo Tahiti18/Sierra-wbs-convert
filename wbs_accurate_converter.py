@@ -258,8 +258,40 @@ class WBSAccurateConverter:
             'total_amount': regular_amount + ot15_amount + ot20_amount
         }
     
-    def create_wbs_excel(self, sierra_data: pd.DataFrame, output_path: str) -> str:
+    def consolidate_employees(self, sierra_data: pd.DataFrame) -> pd.DataFrame:
+        """Consolidate multiple time entries per employee into single records"""
+        consolidated = []
+        
+        # Group by employee name
+        for employee_name, group in sierra_data.groupby('Employee Name'):
+            normalized_name = self.normalize_name(employee_name)
+            
+            # Sum all hours for this employee
+            total_hours = group['Hours'].sum()
+            
+            # Use the most common rate (or average if rates vary)
+            # In most cases, employees should have consistent rates
+            most_common_rate = group['Rate'].mode().iloc[0] if len(group['Rate'].mode()) > 0 else group['Rate'].mean()
+            
+            consolidated.append({
+                'Employee Name': normalized_name,
+                'Total Hours': total_hours,
+                'Rate': most_common_rate,
+                'Record Count': len(group)
+            })
+        
+        return pd.DataFrame(consolidated)
+
+    def create_wbs_excel(self, sierra_data: pd.DataFrame, output_path: str, pre_consolidated: bool = False) -> str:
         """Create WBS format Excel file with exact column structure"""
+        
+        # Check if data is already consolidated
+        if pre_consolidated:
+            # Data is already in consolidated format
+            consolidated_data = sierra_data
+        else:
+            # First, consolidate employees
+            consolidated_data = self.consolidate_employees(sierra_data)
         
         # Create new workbook
         wb = Workbook()
@@ -291,19 +323,19 @@ class WBSAccurateConverter:
                 if value is not None:
                     ws.cell(row=row_idx, column=col_idx, value=value)
         
-        # Process employee data
+        # Process consolidated employee data
         current_row = 9  # Start after headers
         
-        for _, row in sierra_data.iterrows():
-            employee_name = self.normalize_name(row['Employee Name'])
-            hours = float(row['Hours'])
+        for _, row in consolidated_data.iterrows():
+            employee_name = row['Employee Name']
+            total_hours = float(row['Total Hours'])
             rate = float(row['Rate'])
             
             # Get employee info
             emp_info = self.find_employee_info(employee_name)
             
-            # Apply California overtime rules
-            pay_calc = self.apply_california_overtime_rules(hours, rate)
+            # Apply California overtime rules to TOTAL hours
+            pay_calc = self.apply_california_overtime_rules(total_hours, rate)
             
             # WBS Row data (exact column mapping from gold standard)
             wbs_row = [
@@ -315,8 +347,8 @@ class WBSAccurateConverter:
                 rate,                         # Col 6: Pay Rate
                 emp_info['department'],       # Col 7: Department
                 pay_calc['regular_hours'],    # Col 8: A01 - Regular Hours
-                0,                           # Col 9: A02 - Overtime 1
-                0,                           # Col 10: A03 - Doubletime  
+                pay_calc['ot15_hours'],       # Col 9: A02 - Overtime 1.5x
+                pay_calc['ot20_hours'],       # Col 10: A03 - Doubletime 2x
                 0,                           # Col 11: A06 - Vacation
                 0,                           # Col 12: A07 - Sick
                 0,                           # Col 13: A08 - Holiday

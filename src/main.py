@@ -11,9 +11,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from flask import Flask, send_from_directory, request, jsonify, send_file
 from flask_cors import CORS
 
-# Import our WBS accurate converter
+# Import our WBS accurate converter and multi-stage system
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from wbs_accurate_converter import WBSAccurateConverter
+from multi_stage_verification import MultiStagePayrollVerification
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
 app.config['SECRET_KEY'] = 'sierra-payroll-secret-key-2024'
@@ -35,6 +36,9 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 GOLD_MASTER_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'gold_master_order.txt')
 converter = WBSAccurateConverter(GOLD_MASTER_PATH if Path(GOLD_MASTER_PATH).exists() else None)
 
+# Initialize multi-stage verification system
+multi_stage = MultiStagePayrollVerification(converter)
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -52,7 +56,17 @@ def health():
         "employee_database_count": len(converter.employee_database),
         "features": {
             "view_mode": "Send format=json in POST to /api/process-payroll",
-            "download_mode": "Default behavior of /api/process-payroll"
+            "download_mode": "Default behavior of /api/process-payroll",
+            "multi_stage_processing": "Available at /api/multi-stage endpoints"
+        },
+        "multi_stage_endpoints": {
+            "full_pipeline": "/api/multi-stage/process-all",
+            "stage_1": "/api/multi-stage/stage1-parse",
+            "stage_2": "/api/multi-stage/stage2-consolidate", 
+            "stage_3": "/api/multi-stage/stage3-overtime",
+            "stage_4": "/api/multi-stage/stage4-mapping",
+            "stage_5": "/api/multi-stage/stage5-wbs",
+            "validation": "/api/multi-stage/validate"
         }
     })
 
@@ -324,6 +338,97 @@ def view_wbs():
         app.logger.error(traceback.format_exc())
         return jsonify({"error": f"WBS viewing failed: {str(e)}"}), 500
 
+# MULTI-STAGE VERIFICATION ENDPOINTS
+
+@app.route('/api/multi-stage/process-all', methods=['POST'])
+def multi_stage_process_all():
+    """Process all 5 stages with full verification"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"error": "No file selected"}), 400
+        
+        if not allowed_file(file.filename):
+            return jsonify({"error": "File must be Excel format (.xlsx or .xls)"}), 400
+        
+        # Save uploaded file
+        filename = secure_filename(file.filename)
+        input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(input_path)
+        
+        # Create output path
+        output_filename = f"MultiStage_WBS_{filename}"
+        output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
+        
+        try:
+            # Process all stages
+            results = multi_stage.process_all_stages(input_path, output_path)
+            
+            # Check if user wants file download
+            format_type = request.form.get('format', 'json')
+            
+            if format_type == 'excel' and results.get('final_status') == 'success':
+                # Return Excel file
+                return send_file(
+                    output_path,
+                    as_attachment=True,
+                    download_name=output_filename,
+                    mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                )
+            else:
+                # Return JSON results
+                return jsonify(results)
+                
+        finally:
+            # Clean up input file
+            try:
+                os.remove(input_path)
+            except:
+                pass
+                
+    except Exception as e:
+        app.logger.error(f"Multi-stage processing error: {str(e)}")
+        return jsonify({"error": f"Multi-stage processing failed: {str(e)}"}), 500
+
+@app.route('/api/multi-stage/stage1-parse', methods=['POST'])
+def multi_stage_stage1():
+    """Stage 1: Parse raw Sierra data only"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+        
+        file = request.files['file']
+        if not allowed_file(file.filename):
+            return jsonify({"error": "File must be Excel format (.xlsx or .xls)"}), 400
+        
+        filename = secure_filename(file.filename)
+        input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(input_path)
+        
+        try:
+            result = multi_stage.stage1_parse_raw_sierra(input_path)
+            return jsonify(result)
+        finally:
+            try:
+                os.remove(input_path)
+            except:
+                pass
+                
+    except Exception as e:
+        return jsonify({"error": f"Stage 1 failed: {str(e)}"}), 500
+
+@app.route('/api/multi-stage/validate', methods=['GET'])
+def multi_stage_validate():
+    """Validate cross-stage consistency"""
+    try:
+        validation_results = multi_stage.validate_cross_stage_consistency()
+        return jsonify(validation_results)
+    except Exception as e:
+        return jsonify({"error": f"Validation failed: {str(e)}"}), 500
+
 @app.route('/api/conversion-stats', methods=['GET'])
 def get_conversion_stats():
     """Get statistics about conversions"""
@@ -332,7 +437,8 @@ def get_conversion_stats():
         "last_conversion": None,
         "average_employees": 0,
         "average_hours": 0.0,
-        "status": "operational"
+        "status": "operational",
+        "multi_stage_available": True
     })
 
 # Frontend serving routes
