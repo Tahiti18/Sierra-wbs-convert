@@ -338,7 +338,7 @@ class WBSAccurateConverter:
             pay_calc = self.apply_california_overtime_rules(total_hours, rate)
             
             # WBS Row data (exact column mapping from gold standard)
-            # CRITICAL: Use AMOUNTS not hours for most columns except A01, A02, A03
+            # CRITICAL: Use AMOUNTS (not hours) for A01, A02, A03 columns per analysis
             wbs_row = [
                 emp_info['employee_number'],    # Col 1: Employee Number
                 emp_info['ssn'],                # Col 2: SSN
@@ -347,9 +347,9 @@ class WBSAccurateConverter:
                 emp_info['type'],               # Col 5: Type (H/S/E/C)
                 rate,                           # Col 6: Pay Rate
                 emp_info['department'],         # Col 7: Department
-                pay_calc['regular_hours'],      # Col 8: A01 - Regular HOURS 
-                pay_calc['ot15_hours'],         # Col 9: A02 - Overtime 1.5x HOURS
-                pay_calc['ot20_hours'],         # Col 10: A03 - Doubletime 2x HOURS
+                pay_calc['regular_amount'],     # Col 8: A01 - Regular AMOUNT (not hours)
+                pay_calc['ot15_amount'],        # Col 9: A02 - Overtime 1.5x AMOUNT (not hours)
+                pay_calc['ot20_amount'],        # Col 10: A03 - Doubletime 2x AMOUNT (not hours)
                 0,                             # Col 11: A06 - Vacation
                 0,                             # Col 12: A07 - Sick
                 0,                             # Col 13: A08 - Holiday
