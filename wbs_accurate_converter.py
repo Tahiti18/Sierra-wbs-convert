@@ -326,6 +326,9 @@ class WBSAccurateConverter:
         # Process consolidated employee data
         current_row = 9  # Start after headers
         
+        print(f"DEBUG - consolidated_data shape: {consolidated_data.shape}")
+        print(f"DEBUG - consolidated_data columns: {list(consolidated_data.columns)}")
+        
         for _, row in consolidated_data.iterrows():
             employee_name = row['Employee Name']
             total_hours = float(row['Total Hours'])
@@ -336,6 +339,11 @@ class WBSAccurateConverter:
             
             # Apply California overtime rules to TOTAL hours
             pay_calc = self.apply_california_overtime_rules(total_hours, rate)
+            
+            # DEBUG: Print what we're about to write
+            print(f"  DEBUG - pay_calc for {employee_name}:")
+            for key, val in pay_calc.items():
+                print(f"    {key}: {val}")
             
             # WBS Row data (exact column mapping from gold standard)
             # CRITICAL: Use AMOUNTS (not hours) for A01, A02, A03 columns per analysis
@@ -369,6 +377,13 @@ class WBSAccurateConverter:
                 "",                            # Col 27: Comments
                 pay_calc['total_amount']        # Col 28: Totals
             ]
+            
+            # DEBUG: Print specific columns we care about
+            print(f"  DEBUG - Writing to Excel row {current_row}:")
+            print(f"    Col 8 (A01): {wbs_row[7]} (regular_amount)")
+            print(f"    Col 9 (A02): {wbs_row[8]} (ot15_amount)")  
+            print(f"    Col 10 (A03): {wbs_row[9]} (ot20_amount)")
+            print(f"    Col 28 (Total): {wbs_row[27]} (total_amount)")
             
             # Write row to Excel
             for col_idx, value in enumerate(wbs_row, 1):

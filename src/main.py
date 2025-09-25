@@ -13,7 +13,7 @@ from flask_cors import CORS
 
 # Import our WBS accurate converter and multi-stage system
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from wbs_fixed_converter import WBSFixedConverter
+from wbs_accurate_converter import WBSAccurateConverter
 from multi_stage_verification import MultiStagePayrollVerification
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
@@ -34,7 +34,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Initialize WBS accurate converter with gold master order
 GOLD_MASTER_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'gold_master_order.txt')
-converter = WBSFixedConverter(GOLD_MASTER_PATH if Path(GOLD_MASTER_PATH).exists() else None)
+converter = WBSAccurateConverter(GOLD_MASTER_PATH if Path(GOLD_MASTER_PATH).exists() else None)
 
 # Initialize multi-stage verification system
 multi_stage = MultiStagePayrollVerification(converter)

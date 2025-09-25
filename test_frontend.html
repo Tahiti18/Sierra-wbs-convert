@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sierra Payroll Debugging Test Frontend</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .stage {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #fafafa;
+        }
+        .stage h2 {
+            color: #2c3e50;
+            margin-top: 0;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .results {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            background-color: #d5edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            color: #666;
+        }
+        .endpoint-info {
+            background-color: #e8f4fd;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        .backend-url {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .clear-btn {
+            background-color: #e74c3c;
+            color: white;
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        .clear-btn:hover {
+            background-color: #c0392b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Sierra Payroll Debugging Test Frontend</h1>
+        
+        <div class="backend-url">
+            <strong>Backend URL:</strong> <span id="backend-url">https://sierra-payroll-production.up.railway.app</span>
+            <button onclick="testConnection()" style="margin-left: 10px; padding: 4px 8px; font-size: 12px;">Test Connection</button>
+        </div>
+
+        <!-- Stage 1: Raw Data Extraction -->
+        <div class="stage">
+            <h2>🔍 Stage 1: Raw Data Extraction</h2>
+            <div class="endpoint-info">
+                <strong>Endpoint:</strong> /api/extract-raw<br>
+                <strong>Purpose:</strong> Parse Sierra Excel file and extract raw timesheet data before any calculations
+            </div>
+            <div class="form-group">
+                <label for="file1">Select Sierra Excel File:</label>
+                <input type="file" id="file1" accept=".xlsx,.xls" />
+            </div>
+            <button onclick="testStage1()" id="stage1-btn">Extract Raw Data</button>
+            <button onclick="clearResults('stage1-results')" class="clear-btn">Clear</button>
+            <div class="loading" id="stage1-loading">Processing... Please wait.</div>
+            <div id="stage1-results"></div>
+        </div>
+
+        <!-- Stage 2: Employee Consolidation -->
+        <div class="stage">
+            <h2>⚡ Stage 2: Employee Consolidation & Overtime</h2>
+            <div class="endpoint-info">
+                <strong>Endpoint:</strong> /api/consolidate-employees<br>
+                <strong>Purpose:</strong> Group by employee, calculate daily totals, apply California overtime rules
+            </div>
+            <div class="form-group">
+                <label for="file2">Select Sierra Excel File:</label>
+                <input type="file" id="file2" accept=".xlsx,.xls" />
+            </div>
+            <button onclick="testStage2()" id="stage2-btn">Consolidate & Calculate Overtime</button>
+            <button onclick="clearResults('stage2-results')" class="clear-btn">Clear</button>
+            <div class="loading" id="stage2-loading">Processing... Please wait.</div>
+            <div id="stage2-results"></div>
+        </div>
+
+        <!-- Stage 3: Full WBS Processing -->
+        <div class="stage">
+            <h2>📋 Stage 3: Full WBS Processing</h2>
+            <div class="endpoint-info">
+                <strong>Endpoint:</strong> /api/process-payroll<br>
+                <strong>Purpose:</strong> Complete end-to-end processing with WBS format and employee database mapping
+            </div>
+            <div class="form-group">
+                <label for="file3">Select Sierra Excel File:</label>
+                <input type="file" id="file3" accept=".xlsx,.xls" />
+            </div>
+            <button onclick="testStage3('view')" id="stage3-view-btn">📋 View Results</button>
+            <button onclick="testStage3('download')" id="stage3-download-btn">💾 Download Excel</button>
+            <button onclick="clearResults('stage3-results')" class="clear-btn">Clear</button>
+            <div class="loading" id="stage3-loading">Processing... Please wait.</div>
+            <div id="stage3-results"></div>
+        </div>
+
+        <!-- Multi-Stage Verification System -->
+        <div class="stage" style="border: 3px solid #e74c3c; background-color: #fdf2f2;">
+            <h2>🔍 Multi-Stage Verification System</h2>
+            <div class="endpoint-info" style="background-color: #ffe6e6;">
+                <strong>NEW!</strong> 5-Stage verification for maximum payroll accuracy<br>
+                <strong>Purpose:</strong> Process with full transparency and verification at each step<br>
+                <strong>Stages:</strong> Parse → Consolidate → Overtime → Database → WBS Format
+            </div>
+            <div class="form-group">
+                <label for="file-multi">Select Sierra Excel File:</label>
+                <input type="file" id="file-multi" accept=".xlsx,.xls" />
+            </div>
+            <button onclick="testMultiStage('all-view')" id="multi-all-view-btn">📋 VIEW All Stages</button>
+            <button onclick="testMultiStage('all-download')" id="multi-all-download-btn">💾 DOWNLOAD Excel</button>
+            <button onclick="testMultiStage('stage1-only')" id="multi-stage1-btn">1️⃣ Stage 1 Only</button>
+            <button onclick="testMultiStage('validate')" id="multi-validate-btn">✅ Cross-Stage Validation</button>
+            <button onclick="clearResults('multi-results')" class="clear-btn">Clear</button>
+            <div class="loading" id="multi-loading">Processing multi-stage verification... Please wait.</div>
+            <div id="multi-results"></div>
+        </div>
+    </div>
+
+    <script>
+        // Backend URL - Update this if your Railway URL changes
+        const BACKEND_URL = 'https://sierra-payroll-production.up.railway.app';
+        // Backup URL in case Railway is restarting
+        const BACKUP_URL = 'https://web-production-40d96.up.railway.app';
+        
+        // Update the displayed URL
+        document.getElementById('backend-url').textContent = BACKEND_URL;
+
+        async function testConnection() {
+            try {
+                let response = await fetch(`${BACKEND_URL}/health`);
+                
+                // If primary fails, try backup
+                if (!response.ok) {
+                    console.log('Primary backend failed, trying backup...');
+                    response = await fetch(`${BACKUP_URL}/health`);
+                }
+                
+                const data = await response.json();
+                const backendUsed = response.url.includes('40d96') ? 'BACKUP' : 'PRIMARY';
+                alert(`✅ Connection successful! (${backendUsed})\n\n` + JSON.stringify(data, null, 2));
+            } catch (error) {
+                alert('❌ Both backends failed!\n\nError: ' + error.message + 
+                      '\n\nTrying:\n- ' + BACKEND_URL + '\n- ' + BACKUP_URL);
+            }
+        }
+
+        function showLoading(stage) {
+            document.getElementById(`${stage}-loading`).style.display = 'block';
+            if (stage === 'stage3') {
+                document.getElementById(`${stage}-view-btn`).disabled = true;
+                document.getElementById(`${stage}-download-btn`).disabled = true;
+            } else if (stage === 'multi') {
+                document.getElementById(`multi-all-view-btn`).disabled = true;
+                document.getElementById(`multi-all-download-btn`).disabled = true;
+                document.getElementById(`multi-stage1-btn`).disabled = true;
+                document.getElementById(`multi-validate-btn`).disabled = true;
+            } else {
+                document.getElementById(`${stage}-btn`).disabled = true;
+            }
+        }
+
+        function hideLoading(stage) {
+            document.getElementById(`${stage}-loading`).style.display = 'none';
+            if (stage === 'stage3') {
+                document.getElementById(`${stage}-view-btn`).disabled = false;
+                document.getElementById(`${stage}-download-btn`).disabled = false;
+            } else if (stage === 'multi') {
+                document.getElementById(`multi-all-view-btn`).disabled = false;
+                document.getElementById(`multi-all-download-btn`).disabled = false;
+                document.getElementById(`multi-stage1-btn`).disabled = false;
+                document.getElementById(`multi-validate-btn`).disabled = false;
+            } else {
+                document.getElementById(`${stage}-btn`).disabled = false;
+            }
+        }
+
+        function showResults(elementId, data, isError = false) {
+            const resultsDiv = document.getElementById(elementId);
+            resultsDiv.className = `results ${isError ? 'error' : 'success'}`;
+            
+            if (typeof data === 'object') {
+                resultsDiv.textContent = JSON.stringify(data, null, 2);
+            } else {
+                resultsDiv.textContent = data;
+            }
+        }
+
+        function clearResults(elementId) {
+            document.getElementById(elementId).textContent = '';
+            document.getElementById(elementId).className = 'results';
+        }
+
+        async function testStage1() {
+            const fileInput = document.getElementById('file1');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a Sierra Excel file first!');
+                return;
+            }
+
+            showLoading('stage1');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch(`${BACKEND_URL}/api/extract-raw`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResults('stage1-results', {
+                        status: 'SUCCESS',
+                        message: data.message,
+                        raw_data_sample: data.raw_data ? data.raw_data.slice(0, 5) : 'No raw data',
+                        total_records: data.raw_data ? data.raw_data.length : 0,
+                        columns_found: data.columns_found || [],
+                        summary: data.summary || {}
+                    });
+                } else {
+                    showResults('stage1-results', {
+                        status: 'ERROR',
+                        error: data.error || 'Unknown error occurred'
+                    }, true);
+                }
+            } catch (error) {
+                showResults('stage1-results', {
+                    status: 'NETWORK ERROR',
+                    error: error.message
+                }, true);
+            } finally {
+                hideLoading('stage1');
+            }
+        }
+
+        async function testStage2() {
+            const fileInput = document.getElementById('file2');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a Sierra Excel file first!');
+                return;
+            }
+
+            showLoading('stage2');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch(`${BACKEND_URL}/api/consolidate-employees`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResults('stage2-results', {
+                        status: 'SUCCESS',
+                        message: data.message,
+                        consolidated_employees: data.consolidated_employees || {},
+                        overtime_summary: data.overtime_summary || {},
+                        total_employees: Object.keys(data.consolidated_employees || {}).length
+                    });
+                } else {
+                    showResults('stage2-results', {
+                        status: 'ERROR',
+                        error: data.error || 'Unknown error occurred'
+                    }, true);
+                }
+            } catch (error) {
+                showResults('stage2-results', {
+                    status: 'NETWORK ERROR',
+                    error: error.message
+                }, true);
+            } finally {
+                hideLoading('stage2');
+            }
+        }
+
+        async function testStage3(mode = 'view') {
+            const fileInput = document.getElementById('file3');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a Sierra Excel file first!');
+                return;
+            }
+
+            showLoading('stage3');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                // Add mode parameter to request JSON response for viewing
+                if (mode === 'view') {
+                    formData.append('format', 'json');
+                }
+
+                const response = await fetch(`${BACKEND_URL}/api/process-payroll`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (mode === 'view' || response.headers.get('content-type')?.includes('application/json')) {
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        showResults('stage3-results', {
+                            status: 'SUCCESS - VIEW MODE',
+                            message: data.message || 'WBS processing completed successfully',
+                            wbs_data_preview: data.wbs_data ? data.wbs_data.slice(0, 10) : 'No WBS data available',
+                            total_records: data.wbs_data ? data.wbs_data.length : 0,
+                            columns: data.columns || [],
+                            summary: data.summary || {},
+                            employee_count: data.employee_count || 'Unknown',
+                            note: 'This is a preview. Use "Download Excel" to get the full WBS file.'
+                        });
+                    } else {
+                        showResults('stage3-results', {
+                            status: 'ERROR',
+                            error: data.error || 'Unknown error occurred'
+                        }, true);
+                    }
+                } else if (mode === 'download') {
+                    // This is the Excel file download
+                    const blob = await response.blob();
+                    
+                    if (blob.size === 0) {
+                        showResults('stage3-results', {
+                            status: 'ERROR',
+                            error: 'Received empty file. Check backend processing.'
+                        }, true);
+                        return;
+                    }
+                    
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `wbs_format_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.xlsx`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    showResults('stage3-results', {
+                        status: 'SUCCESS - DOWNLOAD MODE',
+                        message: 'WBS Excel file downloaded successfully!',
+                        filename: a.download,
+                        file_size: `${(blob.size / 1024).toFixed(2)} KB`,
+                        timestamp: new Date().toLocaleString()
+                    });
+                }
+            } catch (error) {
+                showResults('stage3-results', {
+                    status: 'NETWORK ERROR',
+                    error: error.message,
+                    mode: mode
+                }, true);
+            } finally {
+                hideLoading('stage3');
+            }
+        }
+
+        async function testMultiStage(mode) {
+            const fileInput = document.getElementById('file-multi');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a Sierra Excel file first!');
+                return;
+            }
+
+            showLoading('multi');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                let endpoint = '';
+                let expectedResponse = 'json';
+                
+                if (mode === 'all-view') {
+                    endpoint = '/api/multi-stage/process-all';
+                    formData.append('format', 'json');
+                } else if (mode === 'all-download') {
+                    endpoint = '/api/multi-stage/process-all';
+                    formData.append('format', 'excel');
+                    expectedResponse = 'file';
+                } else if (mode === 'stage1-only') {
+                    endpoint = '/api/multi-stage/stage1-parse';
+                } else if (mode === 'validate') {
+                    // Special case - validation doesn't need file upload
+                    const response = await fetch(`${BACKEND_URL}/api/multi-stage/validate`);
+                    const data = await response.json();
+                    
+                    showResults('multi-results', {
+                        status: 'CROSS-STAGE VALIDATION',
+                        validation: data,
+                        message: 'Validation checks completed'
+                    });
+                    hideLoading('multi');
+                    return;
+                }
+
+                const response = await fetch(`${BACKEND_URL}${endpoint}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (expectedResponse === 'file' && response.ok) {
+                    // Handle file download
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `Multi_Stage_WBS_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.xlsx`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    showResults('multi-results', {
+                        status: 'SUCCESS - MULTI-STAGE DOWNLOAD',
+                        message: 'Multi-stage WBS file downloaded successfully!',
+                        filename: a.download,
+                        mode: mode
+                    });
+                } else {
+                    // Handle JSON response
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        let displayData = {};
+                        
+                        if (mode === 'stage1-only') {
+                            displayData = {
+                                status: 'SUCCESS - STAGE 1 ONLY',
+                                stage: data.stage,
+                                summary: data.summary,
+                                sample_data: data.raw_data_sample,
+                                data_quality: data.data_quality
+                            };
+                        } else {
+                            // Multi-stage results - COMPREHENSIVE VIEW
+                            displayData = {
+                                status: 'SUCCESS - MULTI-STAGE PROCESSING VIEW',
+                                final_status: data.final_status,
+                                processing_time: data.processing_end ? 
+                                    `${data.processing_start} → ${data.processing_end}` : 'In progress',
+                                stages_completed: Object.keys(data.stages || {}).length,
+                                
+                                // STAGE DETAILS
+                                stage1_raw_parsing: data.stages?.stage1 ? {
+                                    status: data.stages.stage1.status,
+                                    total_records: data.stages.stage1.summary?.total_time_records,
+                                    unique_employees: data.stages.stage1.summary?.unique_employees,
+                                    total_hours: data.stages.stage1.summary?.total_hours,
+                                    data_quality: data.stages.stage1.data_quality
+                                } : null,
+                                
+                                stage2_consolidation: data.stages?.stage2 ? {
+                                    status: data.stages.stage2.status,
+                                    consolidation_ratio: data.stages.stage2.summary?.consolidation_ratio,
+                                    employees_output: data.stages.stage2.summary?.output_employees,
+                                    validation: data.stages.stage2.validation
+                                } : null,
+                                
+                                stage3_overtime: data.stages?.stage3 ? {
+                                    status: data.stages.stage3.status,
+                                    total_employees: data.stages.stage3.summary?.total_employees,
+                                    employees_with_overtime: data.stages.stage3.summary?.employees_with_overtime,
+                                    employees_with_doubletime: data.stages.stage3.summary?.employees_with_doubletime,
+                                    total_payroll: data.stages.stage3.summary?.total_payroll
+                                } : null,
+                                
+                                stage4_database_mapping: data.stages?.stage4 ? {
+                                    status: data.stages.stage4.status,
+                                    database_matches: data.stages.stage4.summary?.database_matches,
+                                    unknown_employees: data.stages.stage4.summary?.unknown_employees,
+                                    departments: data.stages.stage4.summary?.departments
+                                } : null,
+                                
+                                stage5_wbs_creation: data.stages?.stage5 ? {
+                                    status: data.stages.stage5.status,
+                                    employees_in_wbs: data.stages.stage5.summary?.employees_in_wbs,
+                                    file_size_kb: data.stages.stage5.summary?.file_size_kb,
+                                    validation: data.stages.stage5.validation
+                                } : null,
+                                
+                                // DIANNE TRACKING
+                                dianne_verification: {},
+                                
+                                // TOP EMPLOYEES BY HOURS
+                                top_employees: data.stages?.stage2?.top_employees_by_hours?.slice(0, 5) || []
+                            };
+                            
+                            // Enhanced Dianne tracking
+                            if (data.stages?.stage1?.full_raw_data) {
+                                const dianneRaw = data.stages.stage1.full_raw_data.find(r => 
+                                    r['Employee Name']?.includes('Dianne'));
+                                if (dianneRaw) {
+                                    displayData.dianne_verification.stage1_raw = dianneRaw;
+                                }
+                            }
+                            
+                            if (data.stages?.stage2?.employee_summaries) {
+                                const dianneConsolidated = data.stages.stage2.employee_summaries.find(e => 
+                                    e['Employee Name']?.includes('Dianne'));
+                                if (dianneConsolidated) {
+                                    displayData.dianne_verification.stage2_consolidated = dianneConsolidated;
+                                }
+                            }
+                            
+                            if (data.stages?.stage3?.overtime_calculations) {
+                                const dianneOT = data.stages.stage3.overtime_calculations.find(e => 
+                                    e.employee?.includes('Dianne'));
+                                if (dianneOT) {
+                                    displayData.dianne_verification.stage3_overtime = dianneOT;
+                                }
+                            }
+                            
+                            if (data.stages?.stage4?.employee_mappings) {
+                                const dianneMapping = data.stages.stage4.employee_mappings.find(e => 
+                                    e.employee?.includes('Dianne'));
+                                if (dianneMapping) {
+                                    displayData.dianne_verification.stage4_database = {
+                                        employee_number: dianneMapping.employee_number,
+                                        ssn: dianneMapping.ssn,
+                                        department: dianneMapping.department,
+                                        final_total: dianneMapping.total_pay
+                                    };
+                                }
+                            }
+                        }
+                        
+                        showResults('multi-results', displayData);
+                    } else {
+                        showResults('multi-results', {
+                            status: 'ERROR',
+                            error: data.error || 'Unknown error occurred'
+                        }, true);
+                    }
+                }
+            } catch (error) {
+                showResults('multi-results', {
+                    status: 'NETWORK ERROR',
+                    error: error.message
+                }, true);
+            } finally {
+                hideLoading('multi');
+            }
+        }
+
+        // Test connection on page load
+        window.addEventListener('load', function() {
+            setTimeout(testConnection, 1000);
+        });
+    </script>
+</body>
+</html>
