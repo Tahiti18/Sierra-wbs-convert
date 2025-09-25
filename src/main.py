@@ -44,10 +44,14 @@ def health():
     """Health check endpoint"""
     return jsonify({
         "status": "ok",
-        "version": "2.0.0",
-        "converter": "improved_flask",
+        "version": "2.1.0",
+        "converter": "improved_flask_with_view_download",
         "gold_master_loaded": len(converter.gold_master_order) > 0,
-        "gold_master_count": len(converter.gold_master_order)
+        "gold_master_count": len(converter.gold_master_order),
+        "features": {
+            "view_mode": "Send format=json in POST to /api/process-payroll",
+            "download_mode": "Default behavior of /api/process-payroll"
+        }
     })
 
 @app.route('/api/employees', methods=['GET'])
@@ -71,7 +75,7 @@ def get_employees():
 
 @app.route('/api/process-payroll', methods=['POST'])
 def process_payroll():
-    """Process Sierra payroll file and convert to WBS format"""
+    """Process Sierra payroll file and convert to WBS format - supports both view and download"""
     try:
         # Check if file is present
         if 'file' not in request.files:
@@ -84,34 +88,80 @@ def process_payroll():
         if not allowed_file(file.filename):
             return jsonify({"error": "File must be Excel format (.xlsx or .xls)"}), 400
         
+        # Check if user wants JSON response (view mode)
+        format_type = request.form.get('format', 'excel')  # Default to excel download
+        
         # Save uploaded file
         filename = secure_filename(file.filename)
         input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(input_path)
         
-        # Create output file path
-        output_filename = f"WBS_Payroll_{filename}"
-        output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
-        
-        # Convert file
-        result = converter.convert(input_path, output_path)
-        
-        # Clean up input file
         try:
-            os.remove(input_path)
-        except:
-            pass
+            # If JSON format requested (view mode), return data instead of file
+            if format_type == 'json':
+                # Parse Sierra file for viewing
+                sierra_data = converter.parse_sierra_file(input_path)
+                
+                # Create WBS data for viewing
+                wbs_data = []
+                for _, row in sierra_data.iterrows():
+                    employee_name = row['Name']
+                    hours = row['Hours']
+                    rate = row['Rate']
+                    
+                    # Calculate total amount (this should match converter logic)
+                    total_amount = hours * rate
+                    
+                    wbs_data.append({
+                        "employee_name": employee_name,
+                        "hours": float(hours),
+                        "rate": float(rate),
+                        "total_amount": float(total_amount)
+                    })
+                
+                # Find specific employees for debugging
+                dianne_data = [entry for entry in wbs_data if 'DIANNE' in entry['employee_name'].upper()]
+                
+                return jsonify({
+                    "success": True,
+                    "message": "WBS processing completed successfully - VIEW MODE",
+                    "format": "view_only",
+                    "total_employees": len(wbs_data),
+                    "dianne_debug": dianne_data,
+                    "summary": {
+                        "total_hours": sum([emp['hours'] for emp in wbs_data]),
+                        "total_amount": sum([emp['total_amount'] for emp in wbs_data])
+                    },
+                    "preview_data": wbs_data[:10],  # First 10 records
+                    "full_wbs_data": wbs_data  # Complete data for analysis
+                })
+            
+            # Otherwise, create and return Excel file (download mode)
+            else:
+                # Create output file path
+                output_filename = f"WBS_Payroll_{filename}"
+                output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
+                
+                # Convert file
+                result = converter.convert(input_path, output_path)
+                
+                if not result['success']:
+                    return jsonify({"error": f"Conversion failed: {result['error']}"}), 422
+                
+                # Return the converted file
+                return send_file(
+                    output_path,
+                    as_attachment=True,
+                    download_name=output_filename,
+                    mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                )
         
-        if not result['success']:
-            return jsonify({"error": f"Conversion failed: {result['error']}"}), 422
-        
-        # Return the converted file
-        return send_file(
-            output_path,
-            as_attachment=True,
-            download_name=output_filename,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
+        finally:
+            # Clean up input file
+            try:
+                os.remove(input_path)
+            except:
+                pass
         
     except Exception as e:
         app.logger.error(f"Error processing payroll: {str(e)}")
@@ -176,6 +226,77 @@ def validate_sierra_file():
             "employees": 0,
             "total_hours": 0.0
         })
+
+@app.route('/api/view-wbs', methods=['POST'])
+def view_wbs():
+    """View WBS data without downloading - JSON response only"""
+    try:
+        # Check if file is present
+        if 'file' not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"error": "No file selected"}), 400
+        
+        if not allowed_file(file.filename):
+            return jsonify({"error": "File must be Excel format (.xlsx or .xls)"}), 400
+        
+        # Save uploaded file
+        filename = secure_filename(file.filename)
+        input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(input_path)
+        
+        try:
+            # Parse Sierra file for viewing
+            sierra_data = converter.parse_sierra_file(input_path)
+            
+            # Create WBS data for viewing
+            wbs_data = []
+            for _, row in sierra_data.iterrows():
+                employee_name = row['Name']
+                hours = row['Hours']
+                rate = row['Rate']
+                
+                # Calculate total amount (this should match converter logic)
+                total_amount = hours * rate
+                
+                wbs_data.append({
+                    "employee_name": employee_name,
+                    "hours": float(hours),
+                    "rate": float(rate),
+                    "total_amount": float(total_amount)
+                })
+            
+            # Find specific employees for debugging
+            dianne_data = [entry for entry in wbs_data if 'DIANNE' in entry['employee_name'].upper()]
+            
+            return jsonify({
+                "success": True,
+                "message": "WBS data processed successfully - VIEW ONLY MODE",
+                "endpoint": "/api/view-wbs",
+                "total_employees": len(wbs_data),
+                "dianne_debug": dianne_data,
+                "summary": {
+                    "total_hours": sum([emp['hours'] for emp in wbs_data]),
+                    "total_amount": sum([emp['total_amount'] for emp in wbs_data])
+                },
+                "preview_data": wbs_data[:10],  # First 10 records
+                "full_wbs_data": wbs_data,  # Complete data for analysis
+                "note": "Use /api/process-payroll for Excel download"
+            })
+            
+        finally:
+            # Clean up input file
+            try:
+                os.remove(input_path)
+            except:
+                pass
+                
+    except Exception as e:
+        app.logger.error(f"Error viewing WBS: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({"error": f"WBS viewing failed: {str(e)}"}), 500
 
 @app.route('/api/conversion-stats', methods=['GET'])
 def get_conversion_stats():
