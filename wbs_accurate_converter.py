@@ -338,35 +338,36 @@ class WBSAccurateConverter:
             pay_calc = self.apply_california_overtime_rules(total_hours, rate)
             
             # WBS Row data (exact column mapping from gold standard)
+            # CRITICAL: Use AMOUNTS not hours for most columns except A01, A02, A03
             wbs_row = [
-                emp_info['employee_number'],  # Col 1: Employee Number
-                emp_info['ssn'],              # Col 2: SSN
-                employee_name,                # Col 3: Employee Name  
-                emp_info['status'],           # Col 4: Status (A)
-                emp_info['type'],             # Col 5: Type (H/S/E/C)
-                rate,                         # Col 6: Pay Rate
-                emp_info['department'],       # Col 7: Department
-                pay_calc['regular_hours'],    # Col 8: A01 - Regular Hours
-                pay_calc['ot15_hours'],       # Col 9: A02 - Overtime 1.5x
-                pay_calc['ot20_hours'],       # Col 10: A03 - Doubletime 2x
-                0,                           # Col 11: A06 - Vacation
-                0,                           # Col 12: A07 - Sick
-                0,                           # Col 13: A08 - Holiday
-                0,                           # Col 14: A04 - Bonus
-                0,                           # Col 15: A05 - Commission
-                0,                           # Col 16: AH1 - PC HRS MON
-                0,                           # Col 17: AI1 - PC TTL MON
-                0,                           # Col 18: AH2 - PC HRS TUE
-                0,                           # Col 19: AI2 - PC TTL TUE
-                0,                           # Col 20: AH3 - PC HRS WED
-                0,                           # Col 21: AI3 - PC TTL WED
-                0,                           # Col 22: AH4 - PC HRS THU
-                0,                           # Col 23: AI4 - PC TTL THU
-                0,                           # Col 24: AH5 - PC HRS FRI
-                0,                           # Col 25: AI5 - PC TTL FRI
-                0,                           # Col 26: ATE - Total Extension
-                "",                          # Col 27: Comments
-                pay_calc['total_amount']      # Col 28: Totals
+                emp_info['employee_number'],    # Col 1: Employee Number
+                emp_info['ssn'],                # Col 2: SSN
+                employee_name,                  # Col 3: Employee Name  
+                emp_info['status'],             # Col 4: Status (A)
+                emp_info['type'],               # Col 5: Type (H/S/E/C)
+                rate,                           # Col 6: Pay Rate
+                emp_info['department'],         # Col 7: Department
+                pay_calc['regular_hours'],      # Col 8: A01 - Regular HOURS 
+                pay_calc['ot15_hours'],         # Col 9: A02 - Overtime 1.5x HOURS
+                pay_calc['ot20_hours'],         # Col 10: A03 - Doubletime 2x HOURS
+                0,                             # Col 11: A06 - Vacation
+                0,                             # Col 12: A07 - Sick
+                0,                             # Col 13: A08 - Holiday
+                0,                             # Col 14: A04 - Bonus
+                0,                             # Col 15: A05 - Commission
+                0,                             # Col 16: AH1 - PC HRS MON
+                0,                             # Col 17: AI1 - PC TTL MON
+                0,                             # Col 18: AH2 - PC HRS TUE
+                0,                             # Col 19: AI2 - PC TTL TUE
+                0,                             # Col 20: AH3 - PC HRS WED
+                0,                             # Col 21: AI3 - PC TTL WED
+                0,                             # Col 22: AH4 - PC HRS THU
+                0,                             # Col 23: AI4 - PC TTL THU
+                0,                             # Col 24: AH5 - PC HRS FRI
+                0,                             # Col 25: AI5 - PC TTL FRI
+                0,                             # Col 26: ATE - Total Extension
+                "",                            # Col 27: Comments
+                pay_calc['total_amount']        # Col 28: Totals
             ]
             
             # Write row to Excel
