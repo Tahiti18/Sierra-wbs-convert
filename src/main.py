@@ -11,9 +11,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from flask import Flask, send_from_directory, request, jsonify, send_file
 from flask_cors import CORS
 
-# Import our improved converter
+# Import our WBS accurate converter
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from improved_converter import SierraToWBSConverter
+from wbs_accurate_converter import WBSAccurateConverter
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
 app.config['SECRET_KEY'] = 'sierra-payroll-secret-key-2024'
@@ -31,9 +31,9 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 # Ensure upload directory exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Initialize converter with gold master order
+# Initialize WBS accurate converter with gold master order
 GOLD_MASTER_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'gold_master_order.txt')
-converter = SierraToWBSConverter(GOLD_MASTER_PATH if Path(GOLD_MASTER_PATH).exists() else None)
+converter = WBSAccurateConverter(GOLD_MASTER_PATH if Path(GOLD_MASTER_PATH).exists() else None)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -45,9 +45,11 @@ def health():
     return jsonify({
         "status": "ok",
         "version": "2.1.0",
-        "converter": "improved_flask_with_view_download",
+        "converter": "wbs_accurate_converter_v3",
         "gold_master_loaded": len(converter.gold_master_order) > 0,
         "gold_master_count": len(converter.gold_master_order),
+        "employee_database_loaded": len(converter.employee_database) > 0,
+        "employee_database_count": len(converter.employee_database),
         "features": {
             "view_mode": "Send format=json in POST to /api/process-payroll",
             "download_mode": "Default behavior of /api/process-payroll"
@@ -105,18 +107,30 @@ def process_payroll():
                 # Create WBS data for viewing
                 wbs_data = []
                 for _, row in sierra_data.iterrows():
-                    employee_name = row['Name']
+                    employee_name = row['Employee Name']
                     hours = row['Hours']
                     rate = row['Rate']
                     
-                    # Calculate total amount (this should match converter logic)
-                    total_amount = hours * rate
+                    # Get employee info
+                    emp_info = converter.find_employee_info(employee_name)
+                    
+                    # Apply California overtime rules
+                    pay_calc = converter.apply_california_overtime_rules(hours, rate)
                     
                     wbs_data.append({
                         "employee_name": employee_name,
+                        "employee_number": emp_info['employee_number'],
+                        "ssn": emp_info['ssn'],
+                        "department": emp_info['department'],
                         "hours": float(hours),
                         "rate": float(rate),
-                        "total_amount": float(total_amount)
+                        "regular_hours": pay_calc['regular_hours'],
+                        "ot15_hours": pay_calc['ot15_hours'],
+                        "ot20_hours": pay_calc['ot20_hours'],
+                        "regular_amount": pay_calc['regular_amount'],
+                        "ot15_amount": pay_calc['ot15_amount'],
+                        "ot20_amount": pay_calc['ot20_amount'],
+                        "total_amount": pay_calc['total_amount']
                     })
                 
                 # Find specific employees for debugging
@@ -201,14 +215,14 @@ def validate_sierra_file():
             
             # Calculate stats
             total_hours = float(sierra_data['Hours'].sum())
-            unique_employees = int(sierra_data['Name'].nunique())
+            unique_employees = int(sierra_data['Employee Name'].nunique())
             
             return jsonify({
                 "valid": True,
                 "employees": unique_employees,
                 "total_hours": total_hours,
                 "total_entries": len(sierra_data),
-                "employee_names": sierra_data['Name'].unique().tolist()[:10]  # First 10 names
+                "employee_names": sierra_data['Employee Name'].unique().tolist()[:10]  # First 10 names
             })
             
         finally:
@@ -254,18 +268,30 @@ def view_wbs():
             # Create WBS data for viewing
             wbs_data = []
             for _, row in sierra_data.iterrows():
-                employee_name = row['Name']
+                employee_name = row['Employee Name']
                 hours = row['Hours']
                 rate = row['Rate']
                 
-                # Calculate total amount (this should match converter logic)
-                total_amount = hours * rate
+                # Get employee info
+                emp_info = converter.find_employee_info(employee_name)
+                
+                # Apply California overtime rules
+                pay_calc = converter.apply_california_overtime_rules(hours, rate)
                 
                 wbs_data.append({
                     "employee_name": employee_name,
+                    "employee_number": emp_info['employee_number'],
+                    "ssn": emp_info['ssn'],
+                    "department": emp_info['department'],
                     "hours": float(hours),
                     "rate": float(rate),
-                    "total_amount": float(total_amount)
+                    "regular_hours": pay_calc['regular_hours'],
+                    "ot15_hours": pay_calc['ot15_hours'],
+                    "ot20_hours": pay_calc['ot20_hours'],
+                    "regular_amount": pay_calc['regular_amount'],
+                    "ot15_amount": pay_calc['ot15_amount'],
+                    "ot20_amount": pay_calc['ot20_amount'],
+                    "total_amount": pay_calc['total_amount']
                 })
             
             # Find specific employees for debugging
