@@ -31,15 +31,15 @@ class WBSAccurateConverter:
         return {
             "Robleza, Dianne": {
                 "employee_number": "0000662082",
-                "ssn": "626946016", 
+                "ssn": "626946016",
                 "status": "A",
                 "type": "H",
-                "department": "ADMIN"
+                "department": "PRODUCTION"
             },
             "Shafer, Emily": {
                 "employee_number": "0000659098",
                 "ssn": "622809130",
-                "status": "A", 
+                "status": "A",
                 "type": "S",
                 "department": "A"
             },
@@ -47,8 +47,8 @@ class WBSAccurateConverter:
                 "employee_number": "0000694868",
                 "ssn": "616259695",
                 "status": "A",
-                "type": "H", 
-                "department": "A"
+                "type": "H",
+                "department": "PRODUCTION"
             },
             "Young, Giana L": {
                 "employee_number": "0000658972",
@@ -65,7 +65,7 @@ class WBSAccurateConverter:
                 "department": "A"
             },
             "Garcia, Miguel A": {
-                "employee_number": "0000659112", 
+                "employee_number": "0000659112",
                 "ssn": "681068099",
                 "status": "A",
                 "type": "H",
@@ -76,11 +76,11 @@ class WBSAccurateConverter:
                 "ssn": "652143527",
                 "status": "A",
                 "type": "H",
-                "department": "A"
+                "department": "PRODUCTION"
             },
             "Pacheco Estrada, Jesus": {
                 "employee_number": "0000675644",
-                "ssn": "645935042", 
+                "ssn": "645935042",
                 "status": "A",
                 "type": "H",
                 "department": "A"
@@ -90,7 +90,7 @@ class WBSAccurateConverter:
                 "ssn": "685942713",
                 "status": "A",
                 "type": "H",
-                "department": "A"
+                "department": "PRODUCTION"
             },
             "Rivas Beltran, Angel M": {
                 "employee_number": "0000665198",
@@ -98,6 +98,209 @@ class WBSAccurateConverter:
                 "status": "A",
                 "type": "H",
                 "department": "A"
+            },
+            "Alcaraz, Luis": {
+                "employee_number": "0000659096",
+                "ssn": "432946242",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Arizmendi, Fernando": {
+                "employee_number": "0000659100",
+                "ssn": "613871092",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Bello, Luis": {
+                "employee_number": "0000662081",
+                "ssn": "616226754",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Bocanegra, Jose": {
+                "employee_number": "0000701064",
+                "ssn": "605908531",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Castaneda, Andy": {
+                "employee_number": "0000668812",
+                "ssn": "611042001",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Castillo, Moises": {
+                "employee_number": "0000675652",
+                "ssn": "653246578",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Contreras, Brian": {
+                "employee_number": "0000682812",
+                "ssn": "137178003",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Cuevas, Marcelo": {
+                "employee_number": "0000659113",
+                "ssn": "625928562",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Duarte, Esau": {
+                "employee_number": "0000701059",
+                "ssn": "658836473",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Duarte, Kevin": {
+                "employee_number": "0000697052",
+                "ssn": "654060734",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Esquivel, Kleber": {
+                "employee_number": "0000659046",
+                "ssn": "615292328",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Gonzalez, Alejandro": {
+                "employee_number": "0000668811",
+                "ssn": "341127082",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Gonzalez, Emanuel": {
+                "employee_number": "0000668813",
+                "ssn": "627736546",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Gonzalez, Miguel": {
+                "employee_number": "0000659063",
+                "ssn": "623234232",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Hernandez, Sergio": {
+                "employee_number": "0000659040",
+                "ssn": "618243648",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Lopez, Daniel": {
+                "employee_number": "0000659102",
+                "ssn": "655411126",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Lopez, Zeferino": {
+                "employee_number": "0000659048",
+                "ssn": "609226343",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Martinez, Alberto": {
+                "employee_number": "0000659009",
+                "ssn": "621101210",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Martinez, Maciel": {
+                "employee_number": "0000659038",
+                "ssn": "607333861",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Moreno, Eduardo": {
+                "employee_number": "0000659047",
+                "ssn": "610215629",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Perez, Edgar": {
+                "employee_number": "0000659101",
+                "ssn": "797771646",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Santos, Efrain": {
+                "employee_number": "0000659086",
+                "ssn": "634473263",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Santos, Javier": {
+                "employee_number": "0000659084",
+                "ssn": "603297017",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Torres, Anthony": {
+                "employee_number": "0000688270",
+                "ssn": "658102450",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Valle, Victor": {
+                "employee_number": "0000668810",
+                "ssn": "602060741",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Vera, Victor": {
+                "employee_number": "0000659045",
+                "ssn": "628795401",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Gomez, Jose": {
+                "employee_number": "0000658982",
+                "ssn": "897981424",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Padilla, Carlos": {
+                "employee_number": "0000658991",
+                "ssn": "614425738",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
+            },
+            "Robledo, Francisco": {
+                "employee_number": "0000658979",
+                "ssn": "613108074",
+                "status": "A",
+                "type": "H",
+                "department": "PRODUCTION"
             }
         }
     
@@ -326,9 +529,6 @@ class WBSAccurateConverter:
         # Process consolidated employee data
         current_row = 9  # Start after headers
         
-        print(f"DEBUG - consolidated_data shape: {consolidated_data.shape}")
-        print(f"DEBUG - consolidated_data columns: {list(consolidated_data.columns)}")
-        
         for _, row in consolidated_data.iterrows():
             employee_name = row['Employee Name']
             total_hours = float(row['Total Hours'])
@@ -339,11 +539,6 @@ class WBSAccurateConverter:
             
             # Apply California overtime rules to TOTAL hours
             pay_calc = self.apply_california_overtime_rules(total_hours, rate)
-            
-            # DEBUG: Print what we're about to write
-            print(f"  DEBUG - pay_calc for {employee_name}:")
-            for key, val in pay_calc.items():
-                print(f"    {key}: {val}")
             
             # WBS Row data (exact column mapping from gold standard)
             # CRITICAL: Use AMOUNTS (not hours) for A01, A02, A03 columns per analysis
@@ -377,13 +572,6 @@ class WBSAccurateConverter:
                 "",                            # Col 27: Comments
                 pay_calc['total_amount']        # Col 28: Totals
             ]
-            
-            # DEBUG: Print specific columns we care about
-            print(f"  DEBUG - Writing to Excel row {current_row}:")
-            print(f"    Col 8 (A01): {wbs_row[7]} (regular_amount)")
-            print(f"    Col 9 (A02): {wbs_row[8]} (ot15_amount)")  
-            print(f"    Col 10 (A03): {wbs_row[9]} (ot20_amount)")
-            print(f"    Col 28 (Total): {wbs_row[27]} (total_amount)")
             
             # Write row to Excel
             for col_idx, value in enumerate(wbs_row, 1):
