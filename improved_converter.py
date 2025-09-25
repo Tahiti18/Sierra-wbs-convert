@@ -220,53 +220,74 @@ class SierraToWBSConverter:
              "Notes and", "Totals"],
             ["# E:26", "SSN", "Employee Name", "Status", "Type", "Pay Rate", "Dept",
              "A01", "A02", "A03", "A06", "A07", "A08", "A04", "A05", "AH1", "AI1",
-             "AH2", "AI2", "AH3", "AI3", "AH4", "AI4", "AH5", "AI5", "ATE", "Comments", ""]
+             "AH2", "AI2", "AH3", "AI3", "AH4", "AI4", "AH5", "AI5", "ATE", "Comments", "Totals"]
         ]
         
         # Write headers
         for header_row in headers:
             ws.append(header_row)
         
-        # Write employee data - FIXED TO INCLUDE TOTALS
+        # Write employee data - FIXED COLUMN POSITIONING
         for _, row in wbs_data.iterrows():
             # Calculate total amount for this employee
             total_amount = float(row.get('TOTAL_$', 0) or 0)
             
+            # FIXED: Ensure exactly 28 columns with totals in column 27 (index 27)
             employee_row = [
-                "",  # Employee ID (will be filled by WBS system)
-                row.get('SSN', ''),
-                row.get('Employee Name', ''),
-                row.get('Status', 'A'),
-                row.get('Type', 'H'),
-                float(row.get('Pay Rate', 0) or 0),
-                row.get('Dept', ''),
-                float(row.get('A01', 0) or 0),  # Regular hours
-                float(row.get('A02', 0) or 0),  # OT hours
-                float(row.get('A03', 0) or 0),  # DT hours
-                float(row.get('A06', 0) or 0),  # Vacation
-                float(row.get('A07', 0) or 0),  # Sick
-                float(row.get('A08', 0) or 0),  # Holiday
-                float(row.get('A04', 0) or 0),  # Bonus
-                float(row.get('A05', 0) or 0),  # Commission
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  # Piecework columns (empty)
-                0,  # Travel amount
-                "",  # Comments
-                total_amount  # FIXED: Total amount now properly calculated
+                "",                                          # 0: Employee ID
+                row.get('SSN', ''),                         # 1: SSN  
+                row.get('Employee Name', ''),               # 2: Employee Name
+                row.get('Status', 'A'),                     # 3: Status
+                row.get('Type', 'H'),                       # 4: Type
+                float(row.get('Pay Rate', 0) or 0),         # 5: Pay Rate
+                row.get('Dept', ''),                        # 6: Dept
+                float(row.get('A01', 0) or 0),              # 7: A01 - Regular hours
+                float(row.get('A02', 0) or 0),              # 8: A02 - OT hours  
+                float(row.get('A03', 0) or 0),              # 9: A03 - DT hours
+                float(row.get('A06', 0) or 0),              # 10: A06 - Vacation
+                float(row.get('A07', 0) or 0),              # 11: A07 - Sick
+                float(row.get('A08', 0) or 0),              # 12: A08 - Holiday
+                float(row.get('A04', 0) or 0),              # 13: A04 - Bonus
+                float(row.get('A05', 0) or 0),              # 14: A05 - Commission
+                0,                                          # 15: AH1 - PC HRS MON
+                0,                                          # 16: AI1 - PC TTL MON
+                0,                                          # 17: AH2 - PC HRS TUE
+                0,                                          # 18: AI2 - PC TTL TUE
+                0,                                          # 19: AH3 - PC HRS WED
+                0,                                          # 20: AI3 - PC TTL WED
+                0,                                          # 21: AH4 - PC HRS THU
+                0,                                          # 22: AI4 - PC TTL THU
+                0,                                          # 23: AH5 - PC HRS FRI
+                0,                                          # 24: AI5 - PC TTL FRI
+                0,                                          # 25: ATE - TRAVEL AMOUNT
+                "",                                         # 26: Comments
+                total_amount                                # 27: TOTALS - THIS IS THE FIX!
             ]
             ws.append(employee_row)
         
-        # Add totals row
-        totals_row = ["", "", "TOTAL", "", "", "",
-                     wbs_data['A01'].sum(),  # Total regular hours
-                     wbs_data['A02'].sum(),  # Total OT hours  
-                     wbs_data['A03'].sum(),  # Total DT hours
-                     wbs_data['A06'].sum(),  # Total vacation
-                     wbs_data['A07'].sum(),  # Total sick
-                     wbs_data['A08'].sum(),  # Total holiday
-                     wbs_data['A04'].sum(),  # Total bonus
-                     wbs_data['A05'].sum(),  # Total commission
-                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "",  # Piecework and comments
-                     wbs_data['TOTAL_$'].sum()]  # Grand total
+        # Add totals row - FIXED TO MATCH COLUMN COUNT
+        totals_row = [
+            "",                                             # 0: Employee ID
+            "",                                             # 1: SSN
+            "TOTAL",                                        # 2: Employee Name  
+            "",                                             # 3: Status
+            "",                                             # 4: Type
+            "",                                             # 5: Pay Rate
+            "",                                             # 6: Dept
+            wbs_data['A01'].sum(),                         # 7: Total regular hours
+            wbs_data['A02'].sum(),                         # 8: Total OT hours
+            wbs_data['A03'].sum(),                         # 9: Total DT hours
+            wbs_data['A06'].sum(),                         # 10: Total vacation
+            wbs_data['A07'].sum(),                         # 11: Total sick
+            wbs_data['A08'].sum(),                         # 12: Total holiday
+            wbs_data['A04'].sum(),                         # 13: Total bonus
+            wbs_data['A05'].sum(),                         # 14: Total commission
+            0,                                             # 15-24: Piecework totals
+            0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0,                                             # 25: Travel total
+            "",                                            # 26: Comments
+            wbs_data['TOTAL_$'].sum()                      # 27: GRAND TOTAL
+        ]
         ws.append(totals_row)
         
         # Auto-adjust column widths
