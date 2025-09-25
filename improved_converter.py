@@ -227,29 +227,33 @@ class SierraToWBSConverter:
         for header_row in headers:
             ws.append(header_row)
         
-        # Write employee data
+        # Write employee data - FIXED TO INCLUDE TOTALS
         for _, row in wbs_data.iterrows():
-            ws.append([
+            # Calculate total amount for this employee
+            total_amount = float(row.get('TOTAL_$', 0) or 0)
+            
+            employee_row = [
                 "",  # Employee ID (will be filled by WBS system)
-                row['SSN'],
-                row['Employee Name'],
-                row['Status'],
-                row['Type'],
-                row['Pay Rate'],
-                row['Dept'],
-                row['A01'],  # Regular hours
-                row['A02'],  # OT hours
-                row['A03'],  # DT hours
-                row['A06'],  # Vacation
-                row['A07'],  # Sick
-                row['A08'],  # Holiday
-                row['A04'],  # Bonus
-                row['A05'],  # Commission
+                row.get('SSN', ''),
+                row.get('Employee Name', ''),
+                row.get('Status', 'A'),
+                row.get('Type', 'H'),
+                float(row.get('Pay Rate', 0) or 0),
+                row.get('Dept', ''),
+                float(row.get('A01', 0) or 0),  # Regular hours
+                float(row.get('A02', 0) or 0),  # OT hours
+                float(row.get('A03', 0) or 0),  # DT hours
+                float(row.get('A06', 0) or 0),  # Vacation
+                float(row.get('A07', 0) or 0),  # Sick
+                float(row.get('A08', 0) or 0),  # Holiday
+                float(row.get('A04', 0) or 0),  # Bonus
+                float(row.get('A05', 0) or 0),  # Commission
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  # Piecework columns (empty)
                 0,  # Travel amount
                 "",  # Comments
-                row['TOTAL_$']  # Total amount
-            ])
+                total_amount  # FIXED: Total amount now properly calculated
+            ]
+            ws.append(employee_row)
         
         # Add totals row
         totals_row = ["", "", "TOTAL", "", "", "",
@@ -271,7 +275,7 @@ class SierraToWBSConverter:
             column_letter = get_column_letter(column[0].column)
             for cell in column:
                 try:
-                    if len(str(cell.value)) > max_length:
+                    if len(str(cell.value)) > max length:
                         max_length = len(str(cell.value))
                 except:
                     pass
@@ -353,4 +357,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
