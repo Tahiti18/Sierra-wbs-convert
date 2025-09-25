@@ -275,7 +275,7 @@ class SierraToWBSConverter:
             column_letter = get_column_letter(column[0].column)
             for cell in column:
                 try:
-                    if len(str(cell.value)) > max length:
+                    if len(str(cell.value)) > max_length:
                         max_length = len(str(cell.value))
                 except:
                     pass
