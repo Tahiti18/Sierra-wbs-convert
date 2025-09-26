@@ -462,33 +462,33 @@
                                         <h2 className="text-xl font-semibold text-gray-900">
                                             <i className="fas fa-cog mr-2 text-blue-600"></i>Process Payroll Data
                                         </h2>
-                                        <div className="flex rounded-lg overflow-hidden border border-gray-300">
+                                        <div className="flex rounded-lg overflow-hidden border-2 border-blue-300 shadow-sm">
                                             <button 
                                                 onClick={() => setOutputMode('view')}
-                                                className={`px-4 py-2 text-sm font-medium ${
+                                                className={`px-6 py-3 text-sm font-bold border-r-2 ${
                                                     outputMode === 'view' 
-                                                        ? 'bg-blue-600 text-white' 
-                                                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                                                        ? 'bg-blue-600 text-white border-blue-500' 
+                                                        : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200'
                                                 }`}>
-                                                <i className="fas fa-eye mr-1"></i>View
+                                                <i className="fas fa-table mr-2"></i>VIEW SPREADSHEET
                                             </button>
                                             <button 
                                                 onClick={() => setOutputMode('3stage')}
-                                                className={`px-4 py-2 text-sm font-medium ${
+                                                className={`px-6 py-3 text-sm font-bold border-r-2 ${
                                                     outputMode === '3stage' 
-                                                        ? 'bg-green-600 text-white' 
-                                                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                                                        ? 'bg-green-600 text-white border-green-500' 
+                                                        : 'bg-green-50 text-green-700 hover:bg-green-100 border-green-200'
                                                 }`}>
-                                                <i className="fas fa-layer-group mr-1"></i>3-Stage
+                                                <i className="fas fa-layer-group mr-2"></i>3-STAGE VERIFY
                                             </button>
                                             <button 
                                                 onClick={() => setOutputMode('download')}
-                                                className={`px-4 py-2 text-sm font-medium ${
+                                                className={`px-6 py-3 text-sm font-bold ${
                                                     outputMode === 'download' 
-                                                        ? 'bg-blue-600 text-white' 
-                                                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                                                        ? 'bg-purple-600 text-white' 
+                                                        : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
                                                 }`}>
-                                                <i className="fas fa-download mr-1"></i>Download
+                                                <i className="fas fa-download mr-2"></i>DOWNLOAD EXCEL
                                             </button>
                                         </div>
                                     </div>
@@ -504,13 +504,13 @@
                                         </div>
                                     )}
                                     <div className="flex items-center justify-between">
-                                        <div className={`text-sm ${outputMode === 'view' ? 'text-blue-600 font-medium' : outputMode === '3stage' ? 'text-green-600 font-medium' : 'text-gray-600'}`}>
+                                        <div className={`text-base font-semibold p-3 rounded-lg border-2 ${outputMode === 'view' ? 'text-blue-800 bg-blue-50 border-blue-200' : outputMode === '3stage' ? 'text-green-800 bg-green-50 border-green-200' : 'text-purple-800 bg-purple-50 border-purple-200'}`}>
                                             {outputMode === 'view' ? (
-                                                <><i className="fas fa-table mr-1 text-blue-600"></i>Will show final WBS spreadsheet (all 79 employees)</>
+                                                <><i className="fas fa-table mr-2 text-blue-600"></i>📊 VIEW MODE: Display final WBS payroll spreadsheet in browser (all 79 employees with complete data)</>
                                             ) : outputMode === '3stage' ? (
-                                                <><i className="fas fa-layer-group mr-1 text-green-600"></i>Will show all 3 verification stages + final WBS</>
+                                                <><i className="fas fa-layer-group mr-2 text-green-600"></i>🔍 3-STAGE VERIFICATION: Show transparent conversion process (Stage 1→2→3→Final WBS)</>
                                             ) : (
-                                                <><i className="fas fa-download mr-1 text-blue-600"></i>Will generate Excel file for download</>
+                                                <><i className="fas fa-download mr-2 text-purple-600"></i>💾 DOWNLOAD MODE: Generate Excel file ready for WBS submission</>
                                             )}
                                         </div>
                                         <button onClick={outputMode === '3stage' ? process3StageVerification : processPayroll} 
@@ -521,11 +521,11 @@
                                             ) : backendStatus !== 'online' ? (
                                                 <><i className="fas fa-exclamation-triangle mr-2"></i>Backend Offline</>
                                             ) : outputMode === 'view' ? (
-                                                <><i className="fas fa-eye mr-2"></i>View Final WBS</>
+                                                <><i className="fas fa-table mr-2"></i>📊 Show WBS Spreadsheet</>
                                             ) : outputMode === '3stage' ? (
-                                                <><i className="fas fa-layer-group mr-2"></i>3-Stage Verification</>
+                                                <><i className="fas fa-layer-group mr-2"></i>🔍 Run 3-Stage Verification</>
                                             ) : (
-                                                <><i className="fas fa-download mr-2"></i>Download Excel</>
+                                                <><i className="fas fa-download mr-2"></i>💾 Generate Excel File</>
                                             )}
                                         </button>
                                     </div>
