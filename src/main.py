@@ -141,18 +141,38 @@ def process_payroll():
                         "rate_col": rate_col
                     }), 400
                 
-                # Create WBS data for viewing
+                # Create WBS data for viewing - filter for actual employee rows
                 wbs_data = []
                 for _, row in df.iterrows():
                     employee_name = str(row[name_col]) if pd.notna(row[name_col]) else ""
-                    hours = float(row[hours_col]) if pd.notna(row[hours_col]) else 0.0
+                    hours = float(row[hours_col]) if pd.notna(row[hours_col]) and pd.to_numeric(row[hours_col], errors='coerce') > 0 else 0.0
                     rate = float(row[rate_col]) if pd.notna(row[rate_col]) else 0.0
                     
+                    # Skip if not a valid employee row
                     if not employee_name or hours <= 0:
                         continue
                     
-                    # Get employee info
-                    emp_info = converter.find_employee_info(employee_name)
+                    # Skip header rows, summary rows, and non-employee data
+                    if (not pd.isna(pd.to_numeric(employee_name, errors='coerce')) or  # Skip if name is a number
+                        len(employee_name) <= 3 or  # Skip short strings
+                        ' ' not in employee_name or  # Skip if no space (not First Last format)
+                        any(word in employee_name.lower() for word in ['week', 'gross', 'signature', 'date', 'total'])):
+                        continue
+                    
+                    # Convert Sierra format (First Last) to WBS format (Last, First)
+                    def sierra_to_wbs_format(sierra_name):
+                        if isinstance(sierra_name, str) and ' ' in sierra_name:
+                            parts = sierra_name.strip().split()
+                            if len(parts) >= 2:
+                                first_names = ' '.join(parts[:-1])
+                                last_name = parts[-1]
+                                return f'{last_name}, {first_names}'
+                        return sierra_name
+                    
+                    wbs_name = sierra_to_wbs_format(employee_name)
+                    
+                    # Get employee info using WBS format name
+                    emp_info = converter.find_employee_info(wbs_name)
                     
                     # Apply California overtime rules
                     pay_calc = converter.apply_california_overtime_rules(hours, rate)
@@ -274,17 +294,26 @@ def validate_sierra_file():
                     "columns_found": df.columns.tolist()
                 })
             
-            # Calculate stats
+            # Calculate stats - filter for actual employee rows (skip headers/summaries)
             valid_data = df.dropna(subset=[name_col, hours_col])
-            total_hours = float(pd.to_numeric(valid_data[hours_col], errors='coerce').sum())
-            unique_employees = int(valid_data[name_col].nunique())
+            
+            # Filter for rows with actual employee names (not numbers or headers)
+            employee_rows = valid_data[
+                (pd.to_numeric(valid_data[name_col], errors='coerce').isna()) &  # Not a number
+                (valid_data[name_col].str.len() > 3) &  # Name longer than 3 chars
+                (valid_data[name_col].str.contains(' ')) &  # Contains space (First Last)
+                (~valid_data[name_col].str.contains('Week|Gross|signature|Date', case=False, na=False))  # Not headers
+            ]
+            
+            total_hours = float(pd.to_numeric(employee_rows[hours_col], errors='coerce').sum())
+            unique_employees = int(employee_rows[name_col].nunique())
             
             return jsonify({
                 "valid": True,
                 "employees": unique_employees,
                 "total_hours": total_hours,
                 "total_entries": len(valid_data),
-                "employee_names": valid_data[name_col].unique().tolist()[:10],  # First 10 names
+                "employee_names": employee_rows[name_col].unique().tolist()[:10],  # First 10 names
                 "columns_found": df.columns.tolist(),
                 "name_column": name_col,
                 "hours_column": hours_col
