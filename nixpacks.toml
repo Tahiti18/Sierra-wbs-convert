@@ -1,11 +1,11 @@
 [phases.setup]
-nixPkgs = ["python39"]
+nixPkgs = ["python310"]
 
 [phases.install]
-cmd = "pip install -r requirements.txt"
+cmd = "pip install --upgrade pip && pip install -r requirements.txt"
 
 [phases.build]
 cmd = "echo 'Build complete'"
 
 [start]
-cmd = "python src/main.py"
+cmd = "./start.sh"
