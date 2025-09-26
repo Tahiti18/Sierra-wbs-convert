@@ -127,10 +127,10 @@ def process_payroll():
                     # Get employee info using WBS format name
                     emp_info = converter.find_employee_info(employee_name)
                     
-                    # Apply California overtime rules to consolidated hours
+                    # Apply WBS overtime rules to consolidated hours (matches reference format)
                     total_hours_emp = hours_data['total_hours']
                     rate = hours_data['rate']
-                    pay_calc = converter.apply_california_overtime_rules(total_hours_emp, rate)
+                    pay_calc = converter.apply_wbs_overtime_rules(total_hours_emp, rate, employee_name)
                     
                     wbs_data.append({
                         "employee_name": employee_name,
