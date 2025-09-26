@@ -461,7 +461,9 @@ def serve(path):
 if __name__ == '__main__':
     print("Starting Sierra Payroll System...")
     print(f"Gold Master Order loaded: {len(converter.gold_master_order)} employees")
-    port = int(os.getenv('FLASK_PORT', 5000))
+    
+    # Railway uses PORT, local development uses FLASK_PORT
+    port = int(os.getenv('PORT', os.getenv('FLASK_PORT', 5000)))
     print(f"Starting on port: {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
 
