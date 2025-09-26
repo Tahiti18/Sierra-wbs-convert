@@ -501,7 +501,7 @@ class WBSAccurateConverter:
         ws = wb.active
         ws.title = "WEEKLY"
         
-        # WBS Header structure (exact format from gold standard)
+        # WBS Header structure (exact format from gold standard with proper metadata)
         headers = [
             ["# V", "DO NOT EDIT", "Version = B90216-00", "FmtRev = 2.1", 
              f"RunTime = {datetime.now().strftime('%Y%m%d-%H%M%S')}", "CliUnqId = 055269", 
@@ -511,11 +511,11 @@ class WBSAccurateConverter:
              f"CkDate = {datetime.now().strftime('%m/%d/%Y')}", "EmpType = SSN", 
              "DoNotes = 1", "PayRates = H+;S+;E+;C+", "RateCol = 6", "T1 = 7+", 
              "CodeBeg = 8", "CodeEnd = 26", "NoteCol = 27"] + [None] * 9,
-            ["# U", "CliUnqID"] + [None] * 26,
-            ["# N", "Client"] + [None] * 26,
-            ["# P", "Period End"] + [None] * 26,
-            ["# R", "Report Due"] + [None] * 26,
-            ["# C", "Check Date"] + [None] * 26,
+            ["# U", "CliUnqID", "055269"] + [None] * 25,
+            ["# N", "Client", "Sierra Roofing and Solar Inc"] + [None] * 25,
+            ["# P", "Period End", datetime.now().strftime('%m/%d/%Y')] + [None] * 25,
+            ["# R", "Report Due", datetime.now().strftime('%m/%d/%Y')] + [None] * 25,
+            ["# C", "Check Date", datetime.now().strftime('%m/%d/%Y')] + [None] * 25,
             ["# B:8", None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, "Notes and", None],
             ["# E:26", "SSN", "Employee Name", "Status", "Type", "Pay Rate", "Dept", "A01", "A02", "A03", "A06", "A07", "A08", "A04", "A05", "AH1", "AI1", "AH2", "AI2", "AH3", "AI3", "AH4", "AI4", "AH5", "AI5", "ATE", "Comments", "Totals"]
         ]
