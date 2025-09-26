@@ -50,8 +50,8 @@ def health():
         "status": "ok",
         "version": "2.1.0",
         "converter": "wbs_accurate_converter_v3",
-        "gold_master_loaded": len(converter.gold_master_order) > 0,
-        "gold_master_count": len(converter.gold_master_order),
+        "gold_master_loaded": len(converter.wbs_order) > 0,
+        "gold_master_count": len(converter.wbs_order),
         "employee_database_loaded": len(converter.employee_database) > 0,
         "employee_database_count": len(converter.employee_database),
         "features": {
@@ -75,7 +75,7 @@ def get_employees():
     """Get employee list from gold master order"""
     try:
         employees = []
-        for i, name in enumerate(converter.gold_master_order):
+        for i, name in enumerate(converter.wbs_order):
             employees.append({
                 "id": i + 1,
                 "name": name,
