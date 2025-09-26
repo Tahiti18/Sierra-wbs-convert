@@ -115,15 +115,41 @@ def process_payroll():
         try:
             # If JSON format requested (view mode), return data instead of file
             if format_type == 'json':
-                # Parse Sierra file for viewing
-                sierra_data = converter.parse_sierra_file(input_path)
+                # Read Sierra file directly for viewing
+                import pandas as pd
+                df = pd.read_excel(input_path, header=0)
+                df.columns = df.columns.astype(str).str.strip()
+                
+                # Find relevant columns
+                name_col = None
+                hours_col = None
+                rate_col = None
+                
+                for col in df.columns:
+                    if 'name' in col.lower() or 'employee' in col.lower():
+                        name_col = col
+                    if 'hours' in col.lower() or 'time' in col.lower():
+                        hours_col = col
+                    if 'rate' in col.lower() or 'pay' in col.lower():
+                        rate_col = col
+                
+                if not all([name_col, hours_col, rate_col]):
+                    return jsonify({
+                        "error": f"Required columns not found. Found: {df.columns.tolist()}",
+                        "name_col": name_col,
+                        "hours_col": hours_col, 
+                        "rate_col": rate_col
+                    }), 400
                 
                 # Create WBS data for viewing
                 wbs_data = []
-                for _, row in sierra_data.iterrows():
-                    employee_name = row['Employee Name']
-                    hours = row['Hours']
-                    rate = row['Rate']
+                for _, row in df.iterrows():
+                    employee_name = str(row[name_col]) if pd.notna(row[name_col]) else ""
+                    hours = float(row[hours_col]) if pd.notna(row[hours_col]) else 0.0
+                    rate = float(row[rate_col]) if pd.notna(row[rate_col]) else 0.0
+                    
+                    if not employee_name or hours <= 0:
+                        continue
                     
                     # Get employee info
                     emp_info = converter.find_employee_info(employee_name)
@@ -216,10 +242,11 @@ def validate_sierra_file():
         file.save(temp_path)
         
         try:
-            # Parse file to validate format
-            sierra_data = converter.parse_sierra_file(temp_path)
+            # Read Excel file directly for validation
+            import pandas as pd
+            df = pd.read_excel(temp_path, header=0)
             
-            if sierra_data.empty:
+            if df.empty:
                 return jsonify({
                     "valid": False,
                     "error": "No valid employee data found",
@@ -227,16 +254,40 @@ def validate_sierra_file():
                     "total_hours": 0.0
                 })
             
+            # Find relevant columns
+            df.columns = df.columns.astype(str).str.strip()
+            name_col = None
+            hours_col = None
+            
+            for col in df.columns:
+                if 'name' in col.lower() or 'employee' in col.lower():
+                    name_col = col
+                if 'hours' in col.lower() or 'time' in col.lower():
+                    hours_col = col
+            
+            if not name_col or not hours_col:
+                return jsonify({
+                    "valid": False,
+                    "error": "Required columns (Name, Hours) not found",
+                    "employees": 0,
+                    "total_hours": 0.0,
+                    "columns_found": df.columns.tolist()
+                })
+            
             # Calculate stats
-            total_hours = float(sierra_data['Hours'].sum())
-            unique_employees = int(sierra_data['Employee Name'].nunique())
+            valid_data = df.dropna(subset=[name_col, hours_col])
+            total_hours = float(pd.to_numeric(valid_data[hours_col], errors='coerce').sum())
+            unique_employees = int(valid_data[name_col].nunique())
             
             return jsonify({
                 "valid": True,
                 "employees": unique_employees,
                 "total_hours": total_hours,
-                "total_entries": len(sierra_data),
-                "employee_names": sierra_data['Employee Name'].unique().tolist()[:10]  # First 10 names
+                "total_entries": len(valid_data),
+                "employee_names": valid_data[name_col].unique().tolist()[:10],  # First 10 names
+                "columns_found": df.columns.tolist(),
+                "name_column": name_col,
+                "hours_column": hours_col
             })
             
         finally:
