@@ -34,8 +34,8 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo } = React;
 
-        // Use relative API paths for deployment
-        const API_BASE_URL = '/api';
+        // Use backend service URL for cross-port communication
+        const API_BASE_URL = 'https://5001-idrlbzy4bg2q93rmh2rr0-6532622b.e2b.dev/api';
 
         const createAxiosInstance = () => {
             const instance = axios.create({
