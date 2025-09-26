@@ -120,18 +120,35 @@ def process_payroll():
                 df = pd.read_excel(input_path, header=0)
                 df.columns = df.columns.astype(str).str.strip()
                 
-                # Find relevant columns
-                name_col = None
-                hours_col = None
-                rate_col = None
+                # Find relevant columns - select best candidates
+                name_candidates = []
+                hours_candidates = []
+                rate_candidates = []
                 
                 for col in df.columns:
                     if 'name' in col.lower() or 'employee' in col.lower():
-                        name_col = col
+                        name_candidates.append(col)
                     if 'hours' in col.lower() or 'time' in col.lower():
-                        hours_col = col
+                        hours_candidates.append(col)
                     if 'rate' in col.lower() or 'pay' in col.lower():
-                        rate_col = col
+                        rate_candidates.append(col)
+                
+                # Select the best name column (one with most employee-like entries)
+                name_col = None
+                if name_candidates:
+                    best_score = 0
+                    for col in name_candidates:
+                        # Count employee-like entries in this column
+                        score = sum(1 for val in df[col].dropna() 
+                                  if isinstance(val, str) and len(val) > 3 and ' ' in val 
+                                  and not any(word in val.lower() for word in ['week', 'gross', 'total', 'signature']))
+                        if score > best_score:
+                            best_score = score
+                            name_col = col
+                
+                # Select first available hours and rate columns
+                hours_col = hours_candidates[0] if hours_candidates else None
+                rate_col = rate_candidates[0] if rate_candidates else None
                 
                 if not all([name_col, hours_col, rate_col]):
                     return jsonify({
@@ -274,16 +291,31 @@ def validate_sierra_file():
                     "total_hours": 0.0
                 })
             
-            # Find relevant columns
+            # Find relevant columns - select best candidates
             df.columns = df.columns.astype(str).str.strip()
-            name_col = None
-            hours_col = None
+            name_candidates = []
+            hours_candidates = []
             
             for col in df.columns:
                 if 'name' in col.lower() or 'employee' in col.lower():
-                    name_col = col
+                    name_candidates.append(col)
                 if 'hours' in col.lower() or 'time' in col.lower():
-                    hours_col = col
+                    hours_candidates.append(col)
+            
+            # Select the best name column (one with most employee-like entries)
+            name_col = None
+            if name_candidates:
+                best_score = 0
+                for col in name_candidates:
+                    # Count employee-like entries in this column
+                    score = sum(1 for val in df[col].dropna() 
+                              if isinstance(val, str) and len(val) > 3 and ' ' in val 
+                              and not any(word in val.lower() for word in ['week', 'gross', 'total', 'signature']))
+                    if score > best_score:
+                        best_score = score
+                        name_col = col
+            
+            hours_col = hours_candidates[0] if hours_candidates else None
             
             if not name_col or not hours_col:
                 return jsonify({
