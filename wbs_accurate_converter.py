@@ -501,7 +501,7 @@ class WBSAccurateConverter:
         ws = wb.active
         ws.title = "WEEKLY"
         
-        # WBS Header structure (exact format from gold standard with proper metadata)
+        # WBS Header structure (EXACT format from actual WBS file)
         headers = [
             ["# V", "DO NOT EDIT", "Version = B90216-00", "FmtRev = 2.1", 
              f"RunTime = {datetime.now().strftime('%Y%m%d-%H%M%S')}", "CliUnqId = 055269", 
@@ -516,8 +516,13 @@ class WBSAccurateConverter:
             ["# P", "Period End", datetime.now().strftime('%m/%d/%Y')] + [None] * 25,
             ["# R", "Report Due", datetime.now().strftime('%m/%d/%Y')] + [None] * 25,
             ["# C", "Check Date", datetime.now().strftime('%m/%d/%Y')] + [None] * 25,
-            ["# B:8", None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, "Notes and", None],
-            ["# E:26", "SSN", "Employee Name", "Status", "Type", "Pay Rate", "Dept", "A01", "A02", "A03", "A06", "A07", "A08", "A04", "A05", "AH1", "AI1", "AH2", "AI2", "AH3", "AI3", "AH4", "AI4", "AH5", "AI5", "ATE", "Comments", "Totals"]
+            ["# B:8", "", "", "", "Pay", "", "", "REGULAR", "OVERTIME", "DOUBLETIME", 
+             "VACATION", "SICK", "HOLIDAY", "BONUS", "COMMISSION", "PC HRS MON", "PC TTL MON", 
+             "PC HRS TUE", "PC TTL TUE", "PC HRS WED", "PC TTL WED", "PC HRS THU", "PC TTL THU", 
+             "PC HRS FRI", "PC TTL FRI", "TRAVEL AMOUNT", "Notes and", None],
+            ["# E:26", "SSN", "Employee Name", "Status", "Type", "Pay Rate", "Dept", "A01", "A02", "A03", 
+             "A06", "A07", "A08", "A04", "A05", "AH1", "AI1", "AH2", "AI2", "AH3", "AI3", "AH4", "AI4", 
+             "AH5", "AI5", "ATE", "Comments", "Totals"]
         ]
         
         # Write headers
@@ -540,37 +545,41 @@ class WBSAccurateConverter:
             # Apply California overtime rules to TOTAL hours
             pay_calc = self.apply_california_overtime_rules(total_hours, rate)
             
-            # WBS Row data (exact column mapping from gold standard)
-            # CRITICAL: Use AMOUNTS (not hours) for A01, A02, A03 columns per analysis
+            # Generate Excel formula for total (like actual WBS format)
+            row_num = current_row
+            formula = f"=(F{row_num}*H{row_num})+(F{row_num}*I{row_num})+(F{row_num}*J{row_num})+(F{row_num}*K{row_num})+(F{row_num}*L{row_num})+Q{row_num}+S{row_num}+U{row_num}+W{row_num}+Y{row_num}+Z{row_num}"
+            
+            # WBS Row data (EXACT format matching actual WBS file)
+            # CRITICAL: A01-A03 are HOURS, not dollars! Totals are FORMULAS!
             wbs_row = [
                 emp_info['employee_number'],    # Col 1: Employee Number
-                emp_info['ssn'],                # Col 2: SSN
-                employee_name,                  # Col 3: Employee Name  
+                emp_info['ssn'],                # Col 2: SSN  
+                employee_name,                  # Col 3: Employee Name
                 emp_info['status'],             # Col 4: Status (A)
                 emp_info['type'],               # Col 5: Type (H/S/E/C)
                 rate,                           # Col 6: Pay Rate
-                emp_info['department'],         # Col 7: Department
-                pay_calc['regular_amount'],     # Col 8: A01 - Regular AMOUNT (not hours)
-                pay_calc['ot15_amount'],        # Col 9: A02 - Overtime 1.5x AMOUNT (not hours)
-                pay_calc['ot20_amount'],        # Col 10: A03 - Doubletime 2x AMOUNT (not hours)
-                0,                             # Col 11: A06 - Vacation
-                0,                             # Col 12: A07 - Sick
-                0,                             # Col 13: A08 - Holiday
-                0,                             # Col 14: A04 - Bonus
-                0,                             # Col 15: A05 - Commission
-                0,                             # Col 16: AH1 - PC HRS MON
-                0,                             # Col 17: AI1 - PC TTL MON
-                0,                             # Col 18: AH2 - PC HRS TUE
-                0,                             # Col 19: AI2 - PC TTL TUE
-                0,                             # Col 20: AH3 - PC HRS WED
-                0,                             # Col 21: AI3 - PC TTL WED
-                0,                             # Col 22: AH4 - PC HRS THU
-                0,                             # Col 23: AI4 - PC TTL THU
-                0,                             # Col 24: AH5 - PC HRS FRI
-                0,                             # Col 25: AI5 - PC TTL FRI
-                0,                             # Col 26: ATE - Total Extension
-                "",                            # Col 27: Comments
-                pay_calc['total_amount']        # Col 28: Totals
+                emp_info['department'],         # Col 7: Department 
+                pay_calc['regular_hours'] if pay_calc['regular_hours'] > 0 else None,  # Col 8: A01 - Regular HOURS
+                pay_calc['ot15_hours'] if pay_calc['ot15_hours'] > 0 else None,        # Col 9: A02 - Overtime HOURS  
+                pay_calc['ot20_hours'] if pay_calc['ot20_hours'] > 0 else None,        # Col 10: A03 - Doubletime HOURS
+                None,                          # Col 11: A06 - Vacation
+                None,                          # Col 12: A07 - Sick
+                None,                          # Col 13: A08 - Holiday
+                None,                          # Col 14: A04 - Bonus
+                None,                          # Col 15: A05 - Commission
+                None,                          # Col 16: AH1 - PC HRS MON
+                None,                          # Col 17: AI1 - PC TTL MON
+                None,                          # Col 18: AH2 - PC HRS TUE
+                None,                          # Col 19: AI2 - PC TTL TUE
+                None,                          # Col 20: AH3 - PC HRS WED
+                None,                          # Col 21: AI3 - PC TTL WED
+                None,                          # Col 22: AH4 - PC HRS THU
+                None,                          # Col 23: AI4 - PC TTL THU
+                None,                          # Col 24: AH5 - PC HRS FRI
+                None,                          # Col 25: AI5 - PC TTL FRI
+                None,                          # Col 26: ATE - Total Extension
+                None,                          # Col 27: Comments
+                formula                        # Col 28: Excel Formula (like actual WBS)
             ]
             
             # Write row to Excel
