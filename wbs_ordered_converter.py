@@ -89,7 +89,41 @@ class WBSOrderedConverter:
         "Gomez, Jose",
         "Nava, Juan M",
         "Padilla, Carlos",
-        "Robledo, Francisco"
+        "Robledo, Francisco",
+        # Additional missing employees from Sierra file
+        "Alvarez, Jose (Luis)",
+        "Arroyo, Luis",
+        "Cardoso, Hipolito",
+        "Carrasco, Daniel",
+        "Chavez, Derick",
+        "Cortez, Kevin",
+        "Cuevas, Carlos",
+        "Dean, Jake",
+        "Espinoza, Jose",
+        "Flores, Saul",
+        "Garcia, Eduardo",
+        "Garcia, Miguel",
+        "Gomez, Randel",
+        "Hernandez, Carlos",
+        "Hernandez, Edy",
+        "Lopez, Alexander",
+        "Lopez, Yair",
+        "Marquez, Abraham",
+        "Martinez, Alberto O.",
+        "Martinez, Emiliano",
+        "Nava, Juan",
+        "Navichoque, Marlon",
+        "Pacheco, Jesus",
+        "Pelagio, Miguel",
+        "Ramon, Endhy",
+        "Ramos, Omar",
+        "Rivas, Manuel",
+        "Rodriguez, Anthony",
+        "Solis, Juan Romero",
+        "Torrez, Jose",
+        "Vargas, Karina",
+        "Vera, Erick",
+        "Zamora, Cesar"
     ]
     
     def __init__(self):
@@ -596,6 +630,261 @@ class WBSOrderedConverter:
                 "status": "A",
                 "type": "S",
                 "department": "ADMIN"
+            },
+            # Additional missing employees from Sierra file
+            "Alvarez, Jose (Luis)": {
+                "employee_number": "0000662584",
+                "ssn": "534908967",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Arroyo, Luis": {
+                "employee_number": "0000009000",
+                "ssn": "000009000",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Cardoso, Hipolito": {
+                "employee_number": "0000009001",
+                "ssn": "000009001",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Carrasco, Daniel": {
+                "employee_number": "0000009002",
+                "ssn": "000009002",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Chavez, Derick": {
+                "employee_number": "0000698157",
+                "ssn": "610591002",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Cortez, Kevin": {
+                "employee_number": "0000009003",
+                "ssn": "000009003",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Cuevas, Carlos": {
+                "employee_number": "0000009004",
+                "ssn": "000009004",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Dean, Jake": {
+                "employee_number": "0000009005",
+                "ssn": "000009005",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Espinoza, Jose": {
+                "employee_number": "0000659000",
+                "ssn": "607794927",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Flores, Saul": {
+                "employee_number": "0000674802",
+                "ssn": "611882540",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Garcia, Eduardo": {
+                "employee_number": "0000659080",
+                "ssn": "621364058",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Garcia, Miguel": {
+                "employee_number": "0000659112",
+                "ssn": "681068099",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Gomez, Randel": {
+                "employee_number": "0000009006",
+                "ssn": "000009006",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Hernandez, Carlos": {
+                "employee_number": "0000009007",
+                "ssn": "000009007",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Hernandez, Edy": {
+                "employee_number": "0000009008",
+                "ssn": "000009008",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Lopez, Alexander": {
+                "employee_number": "0000009009",
+                "ssn": "000009009",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Lopez, Yair": {
+                "employee_number": "0000659039",
+                "ssn": "635455748",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Marquez, Abraham": {
+                "employee_number": "0000009010",
+                "ssn": "000009010",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Martinez, Alberto O.": {
+                "employee_number": "0000009011",
+                "ssn": "000009011",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Martinez, Emiliano": {
+                "employee_number": "0000659030",
+                "ssn": "601903561",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Nava, Juan": {
+                "employee_number": "0000009012",
+                "ssn": "000009012",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Navichoque, Marlon": {
+                "employee_number": "0000009013",
+                "ssn": "000009013",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Pacheco, Jesus": {
+                "employee_number": "0000009014",
+                "ssn": "000009014",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Pelagio, Miguel": {
+                "employee_number": "0000659093",
+                "ssn": "086310738",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Ramon, Endhy": {
+                "employee_number": "0000009015",
+                "ssn": "000009015",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Ramos, Omar": {
+                "employee_number": "0000009016",
+                "ssn": "000009016",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Rivas, Manuel": {
+                "employee_number": "0000009017",
+                "ssn": "000009017",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Rodriguez, Anthony": {
+                "employee_number": "0000009018",
+                "ssn": "000009018",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Solis, Juan Romero": {
+                "employee_number": "0000009019",
+                "ssn": "000009019",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Torrez, Jose": {
+                "employee_number": "0000659090",
+                "ssn": "625855596",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Vargas, Karina": {
+                "employee_number": "0000009020",
+                "ssn": "000009020",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Vera, Erick": {
+                "employee_number": "0000009021",
+                "ssn": "000009021",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
+            },
+            "Zamora, Cesar": {
+                "employee_number": "0000009022",
+                "ssn": "000009022",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF",
+                "note": "TEMP - Needs real SSN and employee number from WBS"
             }
         }
     
