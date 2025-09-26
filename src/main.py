@@ -34,7 +34,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Initialize WBS accurate converter with gold master order
 GOLD_MASTER_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'gold_master_order.txt')
-converter = WBSAccurateConverter(GOLD_MASTER_PATH if Path(GOLD_MASTER_PATH).exists() else None)
+converter = WBSAccurateConverter()
 
 # Initialize multi-stage verification system
 multi_stage = MultiStagePayrollVerification(converter)
@@ -460,7 +460,7 @@ def serve(path):
 
 if __name__ == '__main__':
     print("Starting Sierra Payroll System...")
-    print(f"Gold Master Order loaded: {len(converter.gold_master_order)} employees")
+    print(f"WBS Master Order loaded: {len(converter.wbs_order)} employees")
     
     # Railway uses PORT, local development uses FLASK_PORT
     port = int(os.getenv('PORT', os.getenv('FLASK_PORT', 5000)))
