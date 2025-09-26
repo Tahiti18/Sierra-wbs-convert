@@ -910,11 +910,12 @@ class WBSOrderedConverter:
             "Vargas, Karina": "Vargas Pineda, Karina",
             "Vera, Erick": "Serrano, Erick V",
             "Rivas, Manuel": "Rivas Beltran, Angel M",
-            # CRITICAL MISSING MAPPINGS - Recover $3,150 in payroll
-            "Ramon, Endhy": "Chavez, Endhy",           # $1,016.67
-            "Navichoque, Marlon": "Navichoque, Marvin", # $720.00
-            "Gomez, Randel": "Gomez, Randal",          # $600.00
-            "Carrasco, Daniel": "Castaneda, Andy"       # $813.33 - Need to verify this mapping
+            # CRITICAL MISSING MAPPINGS - Recover missing payroll
+            "Ramon, Endhy": "Chavez, Endhy",           
+            "Navichoque, Marlon": "Navichoque, Marvin", 
+            "Gomez, Randel": "Gomez, Randal",
+            # REMOVE INCORRECT MAPPING: "Carrasco, Daniel" should NOT map to "Castaneda, Andy"
+            # These are two different people with different amounts
         }
         
         return name_mappings.get(normalized, normalized)
