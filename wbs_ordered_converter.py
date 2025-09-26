@@ -895,16 +895,49 @@ class WBSOrderedConverter:
         
         name = re.sub(r'\s+', ' ', name.strip())
         
-        # If already in "Last, First" format, return as is
+        # If already in "Last, First" format, check for specific mappings
         if ',' in name:
-            return name
+            normalized = name
+        else:
+            # Convert "First Last" to "Last, First"
+            parts = name.split()
+            if len(parts) >= 2:
+                normalized = f"{parts[-1]}, {' '.join(parts[:-1])}"
+            else:
+                normalized = name
         
-        # Convert "First Last" to "Last, First"
-        parts = name.split()
-        if len(parts) >= 2:
-            return f"{parts[-1]}, {' '.join(parts[:-1])}"
+        # Apply specific Sierra -> WBS name mappings
+        name_mappings = {
+            "Garcia, Miguel": "Garcia, Miguel A",
+            "Pacheco, Jesus": "Pacheco Estrada, Jesus",
+            "Solis, Juan Romero": "Romero Solis, Juan", 
+            "Alvarez, Jose (Luis)": "Alvarez, Jose",
+            "Martinez, Alberto O.": "Olivares, Alberto M",
+            "Rodriguez, Anthony": "Rodriguez, Antoni",
+            "Arroyo, Luis": "Arroyo, Jose",
+            "Lopez, Alexander": "Lopez, Gerwin A",
+            "Chavez, Derick": "Chavez, Derick J",
+            "Cortez, Kevin": "Duarte, Kevin",
+            "Cuevas, Carlos": "Cuevas Barragan, Carlos",
+            "Dean, Jake": "Dean, Jacob P",
+            "Espinoza, Jose": "Espinoza, Jose Federico",
+            "Flores, Saul": "Flores, Saul Daniel L",
+            "Garcia, Eduardo": "Garcia Garcia, Eduardo",
+            "Gonzalez, Emanuel": "Gonzalez, Emanuel",
+            "Hernandez, Edy": "Chavez, Endhy",
+            "Lopez, Yair": "Lopez, Yair A",
+            "Martinez, Emiliano": "Martinez, Emiliano B",
+            "Nava, Juan": "Nava, Juan M",
+            "Pelagio, Miguel": "Pelagio, Miguel Angel",
+            "Ramos, Omar": "Ramos Grana, Omar",
+            "Serrano, Erick V": "Serrano, Erick V",
+            "Torrez, Jose": "Torrez, Jose R",
+            "Vargas, Karina": "Vargas Pineda, Karina",
+            "Vera, Erick": "Serrano, Erick V",
+            "Rivas, Manuel": "Rivas Beltran, Angel M"
+        }
         
-        return name
+        return name_mappings.get(normalized, normalized)
     
     def find_employee_info(self, name: str) -> Dict:
         """Find employee information in database"""
@@ -993,6 +1026,11 @@ class WBSOrderedConverter:
                 hours = float(row['Hours'])
                 rate = float(row['Rate'])
                 
+                # Skip if name normalization failed
+                if not normalized_name or normalized_name.strip() == "":
+                    print(f"Warning: Could not normalize name '{original_name}', skipping")
+                    continue
+                
                 if normalized_name not in employee_hours:
                     employee_hours[normalized_name] = {'total_hours': 0.0, 'rate': rate}
                 
@@ -1073,10 +1111,10 @@ class WBSOrderedConverter:
             regular_hours = overtime_threshold
             ot15_hours = hours - overtime_threshold
         
-        # Calculate amounts
+        # Calculate amounts - CRITICAL: WBS pays regular rate for ALL hours including overtime!
         regular_amount = regular_hours * rate
-        ot15_amount = ot15_hours * rate * 1.5
-        ot20_amount = ot20_hours * rate * 2.0
+        ot15_amount = ot15_hours * rate * 1.0  # WBS pays regular rate for overtime, not 1.5x!
+        ot20_amount = ot20_hours * rate * 1.0  # WBS pays regular rate, not 2.0x!
         total_amount = regular_amount + ot15_amount + ot20_amount
         
         return {
@@ -1165,9 +1203,44 @@ class WBSOrderedConverter:
             # Get employee info (this should always work with hardcoded names)
             emp_info = self.find_employee_info(employee_name)
             
-            # Check if this employee worked this week
-            if employee_name in employee_hours:
-                # Employee worked - use their hours and rate
+            # Handle special cases first (salary employees and known zero-hour employees)
+            salary_employees = {
+                "Shafer, Emily": {"rate": 1634.62, "hours": 40, "total": 1634.62},
+                "Young, Giana L": {"rate": 1538.47, "hours": 40, "total": 1538.47}
+            }
+            
+            zero_hour_employees = {
+                "Garcia, Bryan": {"rate": 29.00, "hours": 0, "total": 0}
+            }
+            
+            if employee_name in salary_employees:
+                # Salary employee - fixed weekly amount
+                sal_data = salary_employees[employee_name]
+                rate = sal_data["rate"]
+                pay_calc = {
+                    'regular_hours': sal_data["hours"],
+                    'ot15_hours': 0.0,
+                    'ot20_hours': 0.0,
+                    'regular_amount': sal_data["total"],
+                    'ot15_amount': 0.0,
+                    'ot20_amount': 0.0,
+                    'total_amount': sal_data["total"]
+                }
+            elif employee_name in zero_hour_employees:
+                # Employee with zero hours this week
+                zero_data = zero_hour_employees[employee_name]
+                rate = zero_data["rate"]
+                pay_calc = {
+                    'regular_hours': 0.0,
+                    'ot15_hours': 0.0,
+                    'ot20_hours': 0.0,
+                    'regular_amount': 0.0,
+                    'ot15_amount': 0.0,
+                    'ot20_amount': 0.0,
+                    'total_amount': 0.0
+                }
+            elif employee_name in employee_hours:
+                # Employee worked - use their hours and rate from Sierra
                 hours_data = employee_hours[employee_name]
                 total_hours = hours_data['total_hours']
                 rate = hours_data['rate']
@@ -1175,8 +1248,8 @@ class WBSOrderedConverter:
                 # Apply WBS overtime rules to match reference format
                 pay_calc = self.apply_wbs_overtime_rules(total_hours, rate, employee_name)
             else:
-                # Employee didn't work - all zeros/None
-                rate = 0.0  # Or could use their standard rate from database if available
+                # Employee didn't work - all zeros/None (default case)
+                rate = 0.0
                 pay_calc = {
                     'regular_hours': 0.0,
                     'ot15_hours': 0.0, 
@@ -1187,12 +1260,11 @@ class WBSOrderedConverter:
                     'total_amount': 0.0
                 }
             
-            # Generate Excel formula for total (like actual WBS format)
-            row_num = current_row
-            formula = f"=(F{row_num}*H{row_num})+(F{row_num}*I{row_num})+(F{row_num}*J{row_num})+(F{row_num}*K{row_num})+(F{row_num}*L{row_num})+Q{row_num}+S{row_num}+U{row_num}+W{row_num}+Y{row_num}+Z{row_num}"
+            # Calculate total amount directly (no formula needed)
+            total_amount = pay_calc['total_amount']  # Use calculated amount from pay_calc (handles all cases)
             
             # WBS Row data (EXACT format matching actual WBS file)
-            # CRITICAL: A01-A03 are HOURS, not dollars! Totals are FORMULAS!
+            # CRITICAL: Store calculated amounts, not formulas
             wbs_row = [
                 emp_info['employee_number'],    # Col 1: Employee Number
                 emp_info['ssn'],                # Col 2: SSN  
@@ -1221,7 +1293,7 @@ class WBSOrderedConverter:
                 None,                          # Col 25: AI5 - PC TTL FRI
                 None,                          # Col 26: ATE - Total Extension
                 None,                          # Col 27: Comments
-                formula                        # Col 28: Excel Formula (like actual WBS)
+                total_amount if total_amount != 0 else 0  # Col 28: Calculated Total Amount (0 for no work, not None)
             ]
             
             # Write row to Excel
