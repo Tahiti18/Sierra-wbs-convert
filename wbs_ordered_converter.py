@@ -17,7 +17,8 @@ class WBSOrderedConverter:
     Converts Sierra payroll maintaining exact WBS order with all employees pre-filled
     """
     
-    # HARDCODED WBS MASTER ORDER (from actual WBS file)
+    # HARDCODED WBS MASTER ORDER (EXACT from gold standard WBS_Payroll_9_12_25_for_Marwan.xlsx)
+    # Total: 79 employees - matches gold standard exactly
     WBS_MASTER_ORDER = [
         "Robleza, Dianne",
         "Shafer, Emily", 
@@ -78,6 +79,14 @@ class WBSOrderedConverter:
         "Valle, Victor",
         "Vargas Pineda, Karina",
         "Vera, Victor",
+        "Marquez, Abraham",
+        "Hernandez, Carlos",
+        "Zamora, Cesar",
+        "Hernandez, Edy",
+        "Cardoso, Hipolito",
+        "Cortez, Kevin",
+        "Navichoque, Marvin",
+        "Gomez, Randal",
         "Anolin, Robert M",
         "Dean, Joe P",
         "Garrido, Raul",
@@ -89,41 +98,7 @@ class WBSOrderedConverter:
         "Gomez, Jose",
         "Nava, Juan M",
         "Padilla, Carlos",
-        "Robledo, Francisco",
-        # Additional missing employees from Sierra file
-        "Alvarez, Jose (Luis)",
-        "Arroyo, Luis",
-        "Cardoso, Hipolito",
-        "Carrasco, Daniel",
-        "Chavez, Derick",
-        "Cortez, Kevin",
-        "Cuevas, Carlos",
-        "Dean, Jake",
-        "Espinoza, Jose",
-        "Flores, Saul",
-        "Garcia, Eduardo",
-        "Garcia, Miguel",
-        "Gomez, Randel",
-        "Hernandez, Carlos",
-        "Hernandez, Edy",
-        "Lopez, Alexander",
-        "Lopez, Yair",
-        "Marquez, Abraham",
-        "Martinez, Alberto O.",
-        "Martinez, Emiliano",
-        "Nava, Juan",
-        "Navichoque, Marlon",
-        "Pacheco, Jesus",
-        "Pelagio, Miguel",
-        "Ramon, Endhy",
-        "Ramos, Omar",
-        "Rivas, Manuel",
-        "Rodriguez, Anthony",
-        "Solis, Juan Romero",
-        "Torrez, Jose",
-        "Vargas, Karina",
-        "Vera, Erick",
-        "Zamora, Cesar"
+        "Robledo, Francisco"
     ]
     
     def __init__(self):

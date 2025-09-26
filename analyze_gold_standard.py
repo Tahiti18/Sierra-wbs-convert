@@ -1,75 +1,66 @@
 #!/usr/bin/env python3
-"""
-Quick analysis of WBS gold standard to understand exact format
-"""
+
 import pandas as pd
 from openpyxl import load_workbook
 
 def analyze_gold_standard():
-    print("=== WBS GOLD STANDARD ANALYSIS ===")
+    """Analyze the gold standard WBS file to get exact requirements"""
     
-    # Load the gold standard file
-    try:
-        # Load with openpyxl to see formulas
-        wb = load_workbook('/home/user/webapp/wbs_gold_standard.xlsx')
-        ws = wb.active
+    print("GOLD STANDARD WBS ANALYSIS")
+    print("=" * 80)
+    
+    # Load the gold standard with calculated values
+    wb = load_workbook('/home/user/webapp/WBS_Payroll_9_12_25_for_Marwan.xlsx', data_only=True)
+    ws = wb.active
+    
+    print("Extracting all employees in exact order:")
+    print("-" * 50)
+    
+    employees = []
+    total_amount = 0
+    
+    for row_num in range(9, 200):  # Check many rows to get all employees
+        name_cell = ws.cell(row=row_num, column=3)
+        ssn_cell = ws.cell(row=row_num, column=2)
+        total_cell = ws.cell(row=row_num, column=28)
         
-        print(f"Worksheet name: {ws.title}")
-        print(f"Max row: {ws.max_row}, Max col: {ws.max_column}")
-        
-        # Check header row (assuming row 1)
-        print("\n=== HEADER ROW ===")
-        header_row = []
-        for col in range(1, min(30, ws.max_column + 1)):
-            cell_value = ws.cell(row=1, column=col).value
-            header_row.append(cell_value)
-            print(f"Col {col}: {cell_value}")
+        if name_cell.value and isinstance(name_cell.value, str) and len(name_cell.value) > 3:
+            # This is an employee row
+            employee_name = name_cell.value
+            ssn = ssn_cell.value if ssn_cell.value else "No SSN"
+            amount = total_cell.value if total_cell.value else 0
             
-        # Find Dianne's row (key reference employee)
-        print("\n=== LOOKING FOR DIANNE ROBLEZA ===")
-        dianne_row_num = None
-        for row_num in range(2, min(50, ws.max_row + 1)):
-            name_cell = ws.cell(row=row_num, column=3).value
-            if name_cell and "Dianne" in str(name_cell):
-                dianne_row_num = row_num
-                print(f"Found Dianne in row {row_num}: {name_cell}")
-                break
-        
-        if dianne_row_num:
-            print(f"\n=== DIANNE'S DATA (Row {dianne_row_num}) ===")
-            dianne_data = []
-            for col in range(1, min(30, ws.max_column + 1)):
-                cell = ws.cell(row=dianne_row_num, column=col)
-                cell_value = cell.value
-                
-                # Check if it's a formula
-                if hasattr(cell, 'data_type') and cell.data_type == 'f':
-                    print(f"Col {col} ({header_row[col-1] if col <= len(header_row) else 'Unknown'}): FORMULA = {cell_value}")
-                else:
-                    print(f"Col {col} ({header_row[col-1] if col <= len(header_row) else 'Unknown'}): {cell_value}")
-                dianne_data.append(cell_value)
-        
-        # Also load with pandas to see calculated values
-        print("\n=== PANDAS VIEW (CALCULATED VALUES) ===")
-        df = pd.read_excel('/home/user/webapp/wbs_gold_standard.xlsx', sheet_name=0)
-        print(f"DataFrame shape: {df.shape}")
-        print("\nColumns:")
-        for i, col in enumerate(df.columns):
-            print(f"  {i}: {col}")
+            employees.append({
+                'position': len(employees) + 1,
+                'name': employee_name,
+                'ssn': ssn,
+                'amount': amount
+            })
             
-        # Find Dianne in pandas
-        dianne_rows = df[df.iloc[:, 2].astype(str).str.contains("Dianne", na=False)]
-        if not dianne_rows.empty:
-            print("\n=== DIANNE'S CALCULATED VALUES ===")
-            dianne_row = dianne_rows.iloc[0]
-            for i, value in enumerate(dianne_row):
-                col_name = df.columns[i] if i < len(df.columns) else f"Col_{i}"
-                print(f"Col {i+1} ({col_name}): {value}")
+            total_amount += amount if amount else 0
+            
+            print(f"{len(employees):3d}. {employee_name:30} | SSN: {ssn:12} | ${amount}")
+    
+    print("-" * 80)
+    print(f"TOTAL EMPLOYEES: {len(employees)}")
+    print(f"TOTAL AMOUNT: ${total_amount:,.2f}")
+    
+    # Save the exact order for our converter
+    with open('/home/user/webapp/gold_standard_order.txt', 'w') as f:
+        f.write("# EXACT WBS Employee Order - Gold Standard\n")
+        f.write(f"# Total Employees: {len(employees)}\n")
+        f.write(f"# Total Amount: ${total_amount:,.2f}\n\n")
         
-    except Exception as e:
-        print(f"Error analyzing gold standard: {e}")
-        import traceback
-        traceback.print_exc()
+        for emp in employees:
+            f.write(f'"{emp["name"]}",  # {emp["position"]:3d} - ${emp["amount"]}\n')
+    
+    print(f"\nGold standard order saved to: gold_standard_order.txt")
+    
+    # Find employees with amounts > 0 (worked this week)
+    working_employees = [emp for emp in employees if emp['amount'] > 0]
+    print(f"\nEmployees who worked this week: {len(working_employees)}")
+    
+    return employees
 
 if __name__ == "__main__":
-    analyze_gold_standard()
+    employees = analyze_gold_standard()

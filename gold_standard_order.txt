@@ -1,0 +1,84 @@
+# EXACT WBS Employee Order - Gold Standard
+# Total Employees: 80
+# Total Amount: $128,805.03
+
+"Robleza, Dianne",  #   1 - $112
+"Shafer, Emily",  #   2 - $1634.62
+"Stokes, Symone",  #   3 - $896
+"Young, Giana L",  #   4 - $1538.47
+"Garcia, Bryan",  #   5 - $0
+"Garcia, Miguel A",  #   6 - $1160
+"Hernandez, Diego",  #   7 - $1840
+"Pacheco Estrada, Jesus",  #   8 - $896
+"Pajarito, Ramon",  #   9 - $696
+"Rivas Beltran, Angel M",  #  10 - $700
+"Romero Solis, Juan",  #  11 - $1120
+"Alcaraz, Luis",  #  12 - $1232
+"Alvarez, Jose",  #  13 - $1400
+"Arizmendi, Fernando",  #  14 - $1600
+"Arroyo, Jose",  #  15 - $702
+"Bello, Luis",  #  16 - $576
+"Bocanegra, Jose",  #  17 - $1020
+"Bustos, Eric",  #  18 - $1210
+"Castaneda, Andy",  #  19 - $1632
+"Castillo, Moises",  #  20 - $728
+"Chavez, Derick J",  #  21 - $800
+"Chavez, Endhy",  #  22 - $990
+"Contreras, Brian",  #  23 - $1000
+"Cuevas, Marcelo",  #  24 - $1190
+"Cuevas Barragan, Carlos",  #  25 - $950
+"Dean, Jacob P",  #  26 - $584
+"Duarte, Esau",  #  27 - $1320
+"Duarte, Kevin",  #  28 - $1828
+"Espinoza, Jose Federico",  #  29 - $1069.5
+"Esquivel, Kleber",  #  30 - $1906.5
+"Flores, Saul Daniel L",  #  31 - $950
+"Garcia Garcia, Eduardo",  #  32 - $934
+"Gonzalez, Alejandro",  #  33 - $1935
+"Gonzalez, Emanuel",  #  34 - $1558
+"Gonzalez, Miguel",  #  35 - $2440
+"Hernandez, Sergio",  #  36 - $1776
+"Lopez, Daniel",  #  37 - $637.5
+"Lopez, Gerwin A",  #  38 - $924
+"Lopez, Yair A",  #  39 - $950
+"Lopez, Zeferino",  #  40 - $1110
+"Martinez, Alberto",  #  41 - $1637
+"Martinez, Emiliano B",  #  42 - $1360
+"Martinez, Maciel",  #  43 - $884
+"Mateos, Daniel",  #  44 - $2200
+"Moreno, Eduardo",  #  45 - $1480
+"Olivares, Alberto M",  #  46 - $855
+"Pelagio, Miguel Angel",  #  47 - $1160
+"Perez, Edgar",  #  48 - $754
+"Perez, Octavio",  #  49 - $0
+"Ramos Grana, Omar",  #  50 - $896
+"Rodriguez, Antoni",  #  51 - $950
+"Santos, Efrain",  #  52 - $1516
+"Santos, Javier",  #  53 - $1452
+"Serrano, Erick V",  #  54 - $1354
+"Torres, Anthony",  #  55 - $1150
+"Torrez, Jose R",  #  56 - $1108
+"Valle, Victor",  #  57 - $1271
+"Vargas Pineda, Karina",  #  58 - $864
+"Vera, Victor",  #  59 - $1370
+"Marquez, Abraham",  #  60 - $720
+"Hernandez, Carlos",  #  61 - $1620
+"Zamora, Cesar",  #  62 - $720
+"Hernandez, Edy",  #  63 - $448
+"Cardoso, Hipolito",  #  64 - $720
+"Cortez, Kevin",  #  65 - $890
+"Navichoque, Marvin",  #  66 - $720
+"Gomez, Randal",  #  67 - $620
+"Anolin, Robert M",  #  68 - $1350
+"Dean, Joe P",  #  69 - $3500
+"Garrido, Raul",  #  70 - $2884.62
+"Magallanes, Julio",  #  71 - $1692.32
+"Padilla, Alex",  #  72 - $2050
+"Pealatere, Francis",  #  73 - $2500
+"Phein, Saeng Tsing",  #  74 - $2308
+"Rios, Jose D",  #  75 - $1731
+"Gomez, Jose",  #  76 - $1240
+"Nava, Juan M",  #  77 - $1132.5
+"Padilla, Carlos",  #  78 - $1900
+"Robledo, Francisco",  #  79 - $1900
+"Totals",  #  80 - $30352
