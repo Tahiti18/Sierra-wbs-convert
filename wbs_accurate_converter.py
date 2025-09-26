@@ -34,273 +34,273 @@ class WBSAccurateConverter:
                 "ssn": "626946016",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Shafer, Emily": {
                 "employee_number": "0000659098",
                 "ssn": "622809130",
                 "status": "A",
                 "type": "S",
-                "department": "A"
+                "department": "ADMIN"
             },
             "Stokes, Symone": {
                 "employee_number": "0000694868",
                 "ssn": "616259695",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Young, Giana L": {
                 "employee_number": "0000658972",
                 "ssn": "602762103",
                 "status": "A",
                 "type": "S",
-                "department": "A"
+                "department": "ADMIN"
             },
             "Garcia, Bryan": {
                 "employee_number": "0000659075",
                 "ssn": "616259654",
                 "status": "A",
                 "type": "H",
-                "department": "A"
+                "department": "ADMIN"
             },
             "Garcia, Miguel A": {
                 "employee_number": "0000659112",
                 "ssn": "681068099",
                 "status": "A",
                 "type": "H",
-                "department": "A"
+                "department": "ADMIN"
             },
             "Hernandez, Diego": {
                 "employee_number": "0000702974",
                 "ssn": "652143527",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Pacheco Estrada, Jesus": {
                 "employee_number": "0000675644",
                 "ssn": "645935042",
                 "status": "A",
                 "type": "H",
-                "department": "A"
+                "department": "ADMIN"
             },
             "Pajarito, Ramon": {
                 "employee_number": "0000676086",
                 "ssn": "685942713",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Rivas Beltran, Angel M": {
                 "employee_number": "0000665198",
                 "ssn": "358119787",
                 "status": "A",
                 "type": "H",
-                "department": "A"
+                "department": "ADMIN"
             },
             "Alcaraz, Luis": {
                 "employee_number": "0000659096",
                 "ssn": "432946242",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Arizmendi, Fernando": {
                 "employee_number": "0000659100",
                 "ssn": "613871092",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Bello, Luis": {
                 "employee_number": "0000662081",
                 "ssn": "616226754",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Bocanegra, Jose": {
                 "employee_number": "0000701064",
                 "ssn": "605908531",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Castaneda, Andy": {
                 "employee_number": "0000668812",
                 "ssn": "611042001",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Castillo, Moises": {
                 "employee_number": "0000675652",
                 "ssn": "653246578",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Contreras, Brian": {
                 "employee_number": "0000682812",
                 "ssn": "137178003",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Cuevas, Marcelo": {
                 "employee_number": "0000659113",
                 "ssn": "625928562",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Duarte, Esau": {
                 "employee_number": "0000701059",
                 "ssn": "658836473",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Duarte, Kevin": {
                 "employee_number": "0000697052",
                 "ssn": "654060734",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Esquivel, Kleber": {
                 "employee_number": "0000659046",
                 "ssn": "615292328",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Gonzalez, Alejandro": {
                 "employee_number": "0000668811",
                 "ssn": "341127082",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Gonzalez, Emanuel": {
                 "employee_number": "0000668813",
                 "ssn": "627736546",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Gonzalez, Miguel": {
                 "employee_number": "0000659063",
                 "ssn": "623234232",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Hernandez, Sergio": {
                 "employee_number": "0000659040",
                 "ssn": "618243648",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Lopez, Daniel": {
                 "employee_number": "0000659102",
                 "ssn": "655411126",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Lopez, Zeferino": {
                 "employee_number": "0000659048",
                 "ssn": "609226343",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Martinez, Alberto": {
                 "employee_number": "0000659009",
                 "ssn": "621101210",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Martinez, Maciel": {
                 "employee_number": "0000659038",
                 "ssn": "607333861",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Moreno, Eduardo": {
                 "employee_number": "0000659047",
                 "ssn": "610215629",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Perez, Edgar": {
                 "employee_number": "0000659101",
                 "ssn": "797771646",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Santos, Efrain": {
                 "employee_number": "0000659086",
                 "ssn": "634473263",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Santos, Javier": {
                 "employee_number": "0000659084",
                 "ssn": "603297017",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Torres, Anthony": {
                 "employee_number": "0000688270",
                 "ssn": "658102450",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Valle, Victor": {
                 "employee_number": "0000668810",
                 "ssn": "602060741",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Vera, Victor": {
                 "employee_number": "0000659045",
                 "ssn": "628795401",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Gomez, Jose": {
                 "employee_number": "0000658982",
                 "ssn": "897981424",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Padilla, Carlos": {
                 "employee_number": "0000658991",
                 "ssn": "614425738",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             },
             "Robledo, Francisco": {
                 "employee_number": "0000658979",
                 "ssn": "613108074",
                 "status": "A",
                 "type": "H",
-                "department": "PRODUCTION"
+                "department": "ROOF"
             }
         }
     
