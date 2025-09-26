@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 WBS Complete Sierra Payroll Converter
-Contains ALL 71 employees from actual WBS file with correct SSNs and departments
+Complete employee database from actual WBS file with all 71 employees
 """
 
 import pandas as pd
@@ -27,7 +27,7 @@ class WBSCompleteConverter:
             self.gold_master_order = list(self.employee_database.keys())
     
     def _create_employee_database(self) -> Dict[str, Dict]:
-        """Create complete employee database with all 71 employees from actual WBS"""
+        """Create complete employee database with exact WBS format data"""
         return {
             "Alcaraz, Luis": {
                 "employee_number": "0000659096",
@@ -841,7 +841,7 @@ class WBSCompleteConverter:
             return {
                 'success': True,
                 'output_path': result_path,
-                'message': f'Successfully converted Sierra payroll to WBS format with {len(self.employee_database)} employees in database'
+                'message': f'Sierra payroll successfully converted to WBS format: {result_path}'
             }
         except Exception as e:
             return {
@@ -849,3 +849,12 @@ class WBSCompleteConverter:
                 'error': str(e),
                 'message': f'Conversion failed: {str(e)}'
             }
+
+if __name__ == '__main__':
+    # Test the converter
+    converter = WBSCompleteConverter()
+    print(f"Loaded employee database with {len(converter.employee_database)} employees")
+    
+    # Test conversion
+    result = converter.convert('sierra_input_actual.xlsx', 'complete_wbs_test.xlsx')
+    print(f"Conversion result: {result}")
