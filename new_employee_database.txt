@@ -1,0 +1,503 @@
+    def _create_employee_database(self) -> Dict[str, Dict]:
+        """Create employee database with exact WBS format data"""
+        return {
+            "Alcaraz, Luis": {
+                "employee_number": "0000659096",
+                "ssn": "432946242",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Alvarez, Jose": {
+                "employee_number": "0000662584",
+                "ssn": "534908967",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Anolin, Robert M": {
+                "employee_number": "0000659058",
+                "ssn": "552251095",
+                "status": "A",
+                "type": "S",
+                "department": "SALES"
+            },
+            "Arizmendi, Fernando": {
+                "employee_number": "0000659100",
+                "ssn": "613871092",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Arroyo, Jose": {
+                "employee_number": "0000674796",
+                "ssn": "364725751",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Bello, Luis": {
+                "employee_number": "0000662081",
+                "ssn": "616226754",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Bocanegra, Jose": {
+                "employee_number": "0000701064",
+                "ssn": "605908531",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Bustos, Eric": {
+                "employee_number": "0000700760",
+                "ssn": "603965173",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Castaneda, Andy": {
+                "employee_number": "0000668812",
+                "ssn": "611042001",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Castillo, Moises": {
+                "employee_number": "0000675652",
+                "ssn": "653246578",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Chavez, Derick J": {
+                "employee_number": "0000698157",
+                "ssn": "610591002",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Chavez, Endhy": {
+                "employee_number": "0000698158",
+                "ssn": "625379918",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Contreras, Brian": {
+                "employee_number": "0000682812",
+                "ssn": "137178003",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Cuevas Barragan, Carlos": {
+                "employee_number": "0000681979",
+                "ssn": "615873427",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Cuevas, Marcelo": {
+                "employee_number": "0000659113",
+                "ssn": "625928562",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Dean, Jacob P": {
+                "employee_number": "0000659051",
+                "ssn": "625154423",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Dean, Joe P": {
+                "employee_number": "0000659055",
+                "ssn": "556534609",
+                "status": "A",
+                "type": "C",
+                "department": "SALES"
+            },
+            "Duarte, Esau": {
+                "employee_number": "0000701059",
+                "ssn": "658836473",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Duarte, Kevin": {
+                "employee_number": "0000697052",
+                "ssn": "654060734",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Espinoza, Jose Federico": {
+                "employee_number": "0000659000",
+                "ssn": "607794927",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Esquivel, Kleber": {
+                "employee_number": "0000659046",
+                "ssn": "615292328",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Flores, Saul Daniel L": {
+                "employee_number": "0000674802",
+                "ssn": "611882540",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Garcia Garcia, Eduardo": {
+                "employee_number": "0000659080",
+                "ssn": "621364058",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Garcia, Bryan": {
+                "employee_number": "0000659075",
+                "ssn": "616259654",
+                "status": "A",
+                "type": "H",
+                "department": "GUTTR"
+            },
+            "Garcia, Miguel A": {
+                "employee_number": "0000659112",
+                "ssn": "681068099",
+                "status": "A",
+                "type": "H",
+                "department": "GUTTR"
+            },
+            "Garrido, Raul": {
+                "employee_number": "0000658985",
+                "ssn": "657554426",
+                "status": "A",
+                "type": "S",
+                "department": "SALES"
+            },
+            "Gomez, Jose": {
+                "employee_number": "0000658982",
+                "ssn": "897981424",
+                "status": "A",
+                "type": "H",
+                "department": "SOLAR"
+            },
+            "Gonzalez, Alejandro": {
+                "employee_number": "0000668811",
+                "ssn": "341127082",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Gonzalez, Emanuel": {
+                "employee_number": "0000668813",
+                "ssn": "627736546",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Gonzalez, Miguel": {
+                "employee_number": "0000659063",
+                "ssn": "623234232",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Hernandez, Diego": {
+                "employee_number": "0000702974",
+                "ssn": "652143527",
+                "status": "A",
+                "type": "H",
+                "department": "GUTTR"
+            },
+            "Hernandez, Sergio": {
+                "employee_number": "0000659040",
+                "ssn": "618243648",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Lopez, Daniel": {
+                "employee_number": "0000659102",
+                "ssn": "655411126",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Lopez, Gerwin A": {
+                "employee_number": "0000701804",
+                "ssn": "189351494",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Lopez, Yair A": {
+                "employee_number": "0000659039",
+                "ssn": "635455748",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Lopez, Zeferino": {
+                "employee_number": "0000659048",
+                "ssn": "609226343",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Magallanes, Julio": {
+                "employee_number": "0000680753",
+                "ssn": "612219002",
+                "status": "A",
+                "type": "S",
+                "department": "SALES"
+            },
+            "Martinez, Alberto": {
+                "employee_number": "0000659009",
+                "ssn": "621101210",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Martinez, Emiliano B": {
+                "employee_number": "0000659030",
+                "ssn": "601903561",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Martinez, Maciel": {
+                "employee_number": "0000659038",
+                "ssn": "607333861",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Mateos, Daniel": {
+                "employee_number": "0000698156",
+                "ssn": "660484575",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Moreno, Eduardo": {
+                "employee_number": "0000659047",
+                "ssn": "610215629",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Nava, Juan M": {
+                "employee_number": "0000697056",
+                "ssn": "636667958",
+                "status": "A",
+                "type": "H",
+                "department": "SOLAR"
+            },
+            "Olivares, Alberto M": {
+                "employee_number": "0000688269",
+                "ssn": "622936952",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Pacheco Estrada, Jesus": {
+                "employee_number": "0000675644",
+                "ssn": "645935042",
+                "status": "A",
+                "type": "H",
+                "department": "GUTTR"
+            },
+            "Padilla, Alex": {
+                "employee_number": "0000658988",
+                "ssn": "569697404",
+                "status": "A",
+                "type": "S",
+                "department": "SALES"
+            },
+            "Padilla, Carlos": {
+                "employee_number": "0000658991",
+                "ssn": "614425738",
+                "status": "A",
+                "type": "H",
+                "department": "SOLAR"
+            },
+            "Pajarito, Ramon": {
+                "employee_number": "0000676086",
+                "ssn": "685942713",
+                "status": "A",
+                "type": "H",
+                "department": "GUTTR"
+            },
+            "Pealatere, Francis": {
+                "employee_number": "0000675458",
+                "ssn": "625098739",
+                "status": "A",
+                "type": "C",
+                "department": "SALES"
+            },
+            "Pelagio, Miguel Angel": {
+                "employee_number": "0000659093",
+                "ssn": "086310738",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Perez, Edgar": {
+                "employee_number": "0000659101",
+                "ssn": "797771646",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Perez, Octavio": {
+                "employee_number": "0000698658",
+                "ssn": "658873980",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Phein, Saeng Tsing": {
+                "employee_number": "0000695183",
+                "ssn": "624722627",
+                "status": "A",
+                "type": "S",
+                "department": "SALES"
+            },
+            "Ramos Grana, Omar": {
+                "employee_number": "0000682814",
+                "ssn": "645024748",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Rios, Jose D": {
+                "employee_number": "0000658996",
+                "ssn": "530358447",
+                "status": "A",
+                "type": "S",
+                "department": "SALES"
+            },
+            "Rivas Beltran, Angel M": {
+                "employee_number": "0000665198",
+                "ssn": "358119787",
+                "status": "A",
+                "type": "H",
+                "department": "GUTTR"
+            },
+            "Robledo, Francisco": {
+                "employee_number": "0000658979",
+                "ssn": "613108074",
+                "status": "A",
+                "type": "H",
+                "department": "SOLAR"
+            },
+            "Robleza, Dianne": {
+                "employee_number": "0000662082",
+                "ssn": "626946016",
+                "status": "A",
+                "type": "H",
+                "department": "ADMIN"
+            },
+            "Rodriguez, Antoni": {
+                "employee_number": "0000699565",
+                "ssn": "654991245",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Romero Solis, Juan": {
+                "employee_number": "0000676689",
+                "ssn": "836220003",
+                "status": "A",
+                "type": "H",
+                "department": "GUTTR"
+            },
+            "Santos, Efrain": {
+                "employee_number": "0000659086",
+                "ssn": "634473263",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Santos, Javier": {
+                "employee_number": "0000659084",
+                "ssn": "603297017",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Serrano, Erick V": {
+                "employee_number": "0000702972",
+                "ssn": "006437019",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Shafer, Emily": {
+                "employee_number": "0000659098",
+                "ssn": "622809130",
+                "status": "A",
+                "type": "S",
+                "department": "ADMIN"
+            },
+            "Stokes, Symone": {
+                "employee_number": "0000694868",
+                "ssn": "616259695",
+                "status": "A",
+                "type": "H",
+                "department": "ADMIN"
+            },
+            "Torres, Anthony": {
+                "employee_number": "0000688270",
+                "ssn": "658102450",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Torrez, Jose R": {
+                "employee_number": "0000659090",
+                "ssn": "625855596",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Valle, Victor": {
+                "employee_number": "0000668810",
+                "ssn": "602060741",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Vargas Pineda, Karina": {
+                "employee_number": "0000702061",
+                "ssn": "640670356",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Vera, Victor": {
+                "employee_number": "0000659045",
+                "ssn": "628795401",
+                "status": "A",
+                "type": "H",
+                "department": "ROOF"
+            },
+            "Young, Giana L": {
+                "employee_number": "0000658972",
+                "ssn": "602762103",
+                "status": "A",
+                "type": "S",
+                "department": "ADMIN"
+            },
+        }
+
+# Total employees extracted: 71
