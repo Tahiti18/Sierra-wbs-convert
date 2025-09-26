@@ -118,26 +118,45 @@ def process_payroll():
                 # Use converter's consolidation logic for view mode
                 employee_hours = converter.parse_sierra_file(input_path)
                 
-                # Create WBS data for viewing using consolidated employee hours
-                wbs_data = []
+                # Create COMPLETE WBS data with ALL 79 employees in exact order
+                wbs_data_sorted = []
                 total_hours = 0.0
                 total_amount = 0.0
                 
-                for employee_name, hours_data in employee_hours.items():
-                    # Get employee info using WBS format name
-                    emp_info = converter.find_employee_info(employee_name)
+                # Process ALL WBS employees in exact order
+                for wbs_name in converter.wbs_order:
+                    # Get employee info 
+                    emp_info = converter.find_employee_info(wbs_name)
                     
-                    # Apply WBS overtime rules to consolidated hours (matches reference format)
-                    total_hours_emp = hours_data['total_hours']
-                    rate = hours_data['rate']
-                    pay_calc = converter.apply_wbs_overtime_rules(total_hours_emp, rate, employee_name)
+                    # Check if employee exists in Sierra file
+                    if wbs_name in employee_hours:
+                        hours_data = employee_hours[wbs_name]
+                        total_hours_emp = hours_data['total_hours']
+                        rate = hours_data['rate']
+                        pay_calc = converter.apply_wbs_overtime_rules(total_hours_emp, rate, wbs_name)
+                        
+                        total_hours += total_hours_emp
+                        total_amount += pay_calc['total_amount']
+                    else:
+                        # Missing employee - fill with zeros
+                        total_hours_emp = 0.0
+                        rate = 0.0
+                        pay_calc = {
+                            'regular_hours': 0.0,
+                            'ot15_hours': 0.0,
+                            'ot20_hours': 0.0,
+                            'regular_amount': 0.0,
+                            'ot15_amount': 0.0,
+                            'ot20_amount': 0.0,
+                            'total_amount': 0.0
+                        }
                     
-                    wbs_data.append({
-                        "employee_name": employee_name,
+                    wbs_data_sorted.append({
+                        "employee_name": wbs_name,
                         "employee_number": emp_info['employee_number'],
                         "ssn": emp_info['ssn'],
                         "department": emp_info['department'],
-                        "hours": float(total_hours_emp),  # CONSOLIDATED total hours
+                        "hours": float(total_hours_emp),
                         "rate": float(rate),
                         "regular_hours": pay_calc['regular_hours'],
                         "ot15_hours": pay_calc['ot15_hours'],
@@ -147,35 +166,26 @@ def process_payroll():
                         "ot20_amount": pay_calc['ot20_amount'],
                         "total_amount": pay_calc['total_amount']
                     })
-                    
-                    total_hours += total_hours_emp
-                    total_amount += pay_calc['total_amount']
-                
-                # Sort by WBS order
-                wbs_data_sorted = []
-                for wbs_name in converter.wbs_order:
-                    for emp_data in wbs_data:
-                        if emp_data['employee_name'] == wbs_name:
-                            wbs_data_sorted.append(emp_data)
-                            break
                 
                 # Find specific employees for debugging
                 dianne_data = [entry for entry in wbs_data_sorted if 'Dianne' in entry['employee_name']]
                 
                 return jsonify({
                     "success": True,
-                    "message": "WBS processing completed successfully - VIEW MODE (CONSOLIDATED)",
+                    "message": f"WBS processing completed - ALL {len(wbs_data_sorted)} employees in exact WBS order",
                     "format": "view_only",
-                    "employees": len(wbs_data_sorted),
+                    "total_employees": len(wbs_data_sorted),
+                    "sierra_employees": len(employee_hours),
                     "total_hours": total_hours,
                     "employee_names": [emp['employee_name'] for emp in wbs_data_sorted[:10]],
-                    "dianne_debug": dianne_data,
                     "summary": {
                         "total_hours": total_hours,
-                        "total_amount": total_amount
+                        "total_amount": total_amount,
+                        "total_wbs_employees": len(wbs_data_sorted),
+                        "sierra_employees_found": len(employee_hours)
                     },
                     "preview_data": wbs_data_sorted[:10],  # First 10 records
-                    "full_wbs_data": wbs_data_sorted  # Complete consolidated data
+                    "full_wbs_data": wbs_data_sorted  # ALL 79 employees in exact WBS order
                 })
             
             

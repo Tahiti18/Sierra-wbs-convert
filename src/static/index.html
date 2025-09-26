@@ -197,7 +197,7 @@
                     if (outputMode === 'view') {
                         // Handle JSON view response
                         setViewData(response.data);
-                        setSuccess(`View mode: ${response.data.total_employees} employees processed. See data below.`);
+                        setSuccess(`View mode: ${response.data.total_employees} WBS employees (${response.data.sierra_employees} from Sierra). See data below.`);
                         setActiveTab('results');
                     } else {
                         // Handle blob download response
@@ -520,8 +520,8 @@
                                         <table className="min-w-full divide-y divide-gray-200">
                                             <thead className="bg-gray-50">
                                                 <tr>
-                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">SSN</th>
+                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dept</th>
                                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Hours</th>
                                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Rate</th>
@@ -534,8 +534,8 @@
                                             <tbody className="divide-y divide-gray-200">
                                                 {(viewData.full_wbs_data || []).map((emp, idx) => (
                                                     <tr key={idx} className="hover:bg-gray-50">
-                                                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{emp.employee_name}</td>
                                                         <td className="px-6 py-4 text-sm text-gray-500">{emp.ssn}</td>
+                                                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{emp.employee_name}</td>
                                                         <td className="px-6 py-4 text-sm text-gray-500">
                                                             <span className="px-2 py-1 rounded-full text-xs bg-gray-100">{emp.department}</span>
                                                         </td>
