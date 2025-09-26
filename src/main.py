@@ -115,91 +115,29 @@ def process_payroll():
         try:
             # If JSON format requested (view mode), return data instead of file
             if format_type == 'json':
-                # Read Sierra file directly for viewing
-                import pandas as pd
-                df = pd.read_excel(input_path, header=0)
-                df.columns = df.columns.astype(str).str.strip()
+                # Use converter's consolidation logic for view mode
+                employee_hours = converter.parse_sierra_file(input_path)
                 
-                # Find relevant columns - select best candidates
-                name_candidates = []
-                hours_candidates = []
-                rate_candidates = []
-                
-                for col in df.columns:
-                    if 'name' in col.lower() or 'employee' in col.lower():
-                        name_candidates.append(col)
-                    if 'hours' in col.lower() or 'time' in col.lower():
-                        hours_candidates.append(col)
-                    if 'rate' in col.lower() or 'pay' in col.lower():
-                        rate_candidates.append(col)
-                
-                # Select the best name column (one with most employee-like entries)
-                name_col = None
-                if name_candidates:
-                    best_score = 0
-                    for col in name_candidates:
-                        # Count employee-like entries in this column
-                        score = sum(1 for val in df[col].dropna() 
-                                  if isinstance(val, str) and len(val) > 3 and ' ' in val 
-                                  and not any(word in val.lower() for word in ['week', 'gross', 'total', 'signature']))
-                        if score > best_score:
-                            best_score = score
-                            name_col = col
-                
-                # Select first available hours and rate columns
-                hours_col = hours_candidates[0] if hours_candidates else None
-                rate_col = rate_candidates[0] if rate_candidates else None
-                
-                if not all([name_col, hours_col, rate_col]):
-                    return jsonify({
-                        "error": f"Required columns not found. Found: {df.columns.tolist()}",
-                        "name_col": name_col,
-                        "hours_col": hours_col, 
-                        "rate_col": rate_col
-                    }), 400
-                
-                # Create WBS data for viewing - filter for actual employee rows
+                # Create WBS data for viewing using consolidated employee hours
                 wbs_data = []
-                for _, row in df.iterrows():
-                    employee_name = str(row[name_col]) if pd.notna(row[name_col]) else ""
-                    hours = float(row[hours_col]) if pd.notna(row[hours_col]) and pd.to_numeric(row[hours_col], errors='coerce') > 0 else 0.0
-                    rate = float(row[rate_col]) if pd.notna(row[rate_col]) else 0.0
-                    
-                    # Skip if not a valid employee row
-                    if not employee_name or hours <= 0:
-                        continue
-                    
-                    # Skip header rows, summary rows, and non-employee data
-                    if (not pd.isna(pd.to_numeric(employee_name, errors='coerce')) or  # Skip if name is a number
-                        len(employee_name) <= 3 or  # Skip short strings
-                        ' ' not in employee_name or  # Skip if no space (not First Last format)
-                        any(word in employee_name.lower() for word in ['week', 'gross', 'signature', 'date', 'total'])):
-                        continue
-                    
-                    # Convert Sierra format (First Last) to WBS format (Last, First)
-                    def sierra_to_wbs_format(sierra_name):
-                        if isinstance(sierra_name, str) and ' ' in sierra_name:
-                            parts = sierra_name.strip().split()
-                            if len(parts) >= 2:
-                                first_names = ' '.join(parts[:-1])
-                                last_name = parts[-1]
-                                return f'{last_name}, {first_names}'
-                        return sierra_name
-                    
-                    wbs_name = sierra_to_wbs_format(employee_name)
-                    
+                total_hours = 0.0
+                total_amount = 0.0
+                
+                for employee_name, hours_data in employee_hours.items():
                     # Get employee info using WBS format name
-                    emp_info = converter.find_employee_info(wbs_name)
+                    emp_info = converter.find_employee_info(employee_name)
                     
-                    # Apply California overtime rules
-                    pay_calc = converter.apply_california_overtime_rules(hours, rate)
+                    # Apply California overtime rules to consolidated hours
+                    total_hours_emp = hours_data['total_hours']
+                    rate = hours_data['rate']
+                    pay_calc = converter.apply_california_overtime_rules(total_hours_emp, rate)
                     
                     wbs_data.append({
                         "employee_name": employee_name,
                         "employee_number": emp_info['employee_number'],
                         "ssn": emp_info['ssn'],
                         "department": emp_info['department'],
-                        "hours": float(hours),
+                        "hours": float(total_hours_emp),  # CONSOLIDATED total hours
                         "rate": float(rate),
                         "regular_hours": pay_calc['regular_hours'],
                         "ot15_hours": pay_calc['ot15_hours'],
@@ -209,23 +147,37 @@ def process_payroll():
                         "ot20_amount": pay_calc['ot20_amount'],
                         "total_amount": pay_calc['total_amount']
                     })
+                    
+                    total_hours += total_hours_emp
+                    total_amount += pay_calc['total_amount']
+                
+                # Sort by WBS order
+                wbs_data_sorted = []
+                for wbs_name in converter.wbs_order:
+                    for emp_data in wbs_data:
+                        if emp_data['employee_name'] == wbs_name:
+                            wbs_data_sorted.append(emp_data)
+                            break
                 
                 # Find specific employees for debugging
-                dianne_data = [entry for entry in wbs_data if 'DIANNE' in entry['employee_name'].upper()]
+                dianne_data = [entry for entry in wbs_data_sorted if 'Dianne' in entry['employee_name']]
                 
                 return jsonify({
                     "success": True,
-                    "message": "WBS processing completed successfully - VIEW MODE",
+                    "message": "WBS processing completed successfully - VIEW MODE (CONSOLIDATED)",
                     "format": "view_only",
-                    "total_employees": len(wbs_data),
+                    "employees": len(wbs_data_sorted),
+                    "total_hours": total_hours,
+                    "employee_names": [emp['employee_name'] for emp in wbs_data_sorted[:10]],
                     "dianne_debug": dianne_data,
                     "summary": {
-                        "total_hours": sum([emp['hours'] for emp in wbs_data]),
-                        "total_amount": sum([emp['total_amount'] for emp in wbs_data])
+                        "total_hours": total_hours,
+                        "total_amount": total_amount
                     },
-                    "preview_data": wbs_data[:10],  # First 10 records
-                    "full_wbs_data": wbs_data  # Complete data for analysis
+                    "preview_data": wbs_data_sorted[:10],  # First 10 records
+                    "full_wbs_data": wbs_data_sorted  # Complete consolidated data
                 })
+            
             
             # Otherwise, create and return Excel file (download mode)
             else:
