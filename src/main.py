@@ -13,7 +13,7 @@ from flask_cors import CORS
 
 # Import our WBS accurate converter and multi-stage system
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from wbs_complete_converter import WBSCompleteConverter as WBSAccurateConverter
+from wbs_ordered_converter import WBSOrderedConverter as WBSAccurateConverter
 from multi_stage_verification import MultiStagePayrollVerification
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
