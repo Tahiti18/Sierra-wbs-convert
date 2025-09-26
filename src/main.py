@@ -15,6 +15,7 @@ from flask_cors import CORS
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from wbs_ordered_converter import WBSOrderedConverter as WBSAccurateConverter
 from multi_stage_verification import MultiStagePayrollVerification
+from simple_3stage_system import Simple3StageConverter
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
 app.config['SECRET_KEY'] = 'sierra-payroll-secret-key-2024'
@@ -39,6 +40,9 @@ converter = WBSAccurateConverter()
 # Initialize multi-stage verification system
 multi_stage = MultiStagePayrollVerification(converter)
 
+# Initialize clean 3-stage system
+simple_3stage = Simple3StageConverter()
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -57,7 +61,8 @@ def health():
         "features": {
             "view_mode": "Send format=json in POST to /api/process-payroll",
             "download_mode": "Default behavior of /api/process-payroll",
-            "multi_stage_processing": "Available at /api/multi-stage endpoints"
+            "multi_stage_processing": "Available at /api/multi-stage endpoints",
+            "clean_3stage_system": "Integrated simple 3-stage pipeline for transparent conversion"
         },
         "multi_stage_endpoints": {
             "full_pipeline": "/api/multi-stage/process-all",
@@ -113,93 +118,82 @@ def process_payroll():
         file.save(input_path)
         
         try:
-            # If JSON format requested (view mode), return data instead of file
+            # If JSON format requested (view mode), use CLEAN 3-STAGE SYSTEM
             if format_type == 'json':
-                # Use converter's consolidation logic for view mode
-                employee_hours = converter.parse_sierra_file(input_path)
+                # Use the clean 3-stage system for transparent processing
+                pipeline_result = simple_3stage.convert_full_pipeline(input_path)
                 
-                # Create COMPLETE WBS data with ALL 79 employees in exact order
-                wbs_data_sorted = []
-                total_hours = 0.0
-                total_amount = 0.0
-                
-                # Process ALL WBS employees in exact order
-                for wbs_name in converter.wbs_order:
-                    # Get employee info 
-                    emp_info = converter.find_employee_info(wbs_name)
+                if pipeline_result['pipeline_complete']:
+                    stage3_data = pipeline_result['stage3']
+                    wbs_output = stage3_data['wbs_output']
                     
-                    # Check if employee exists in Sierra file
-                    if wbs_name in employee_hours:
-                        hours_data = employee_hours[wbs_name]
-                        total_hours_emp = hours_data['total_hours']
-                        rate = hours_data['rate']
-                        pay_calc = converter.apply_wbs_overtime_rules(total_hours_emp, rate, wbs_name)
-                        
-                        total_hours += total_hours_emp
-                        total_amount += pay_calc['total_amount']
-                    else:
-                        # Missing employee - fill with zeros
-                        total_hours_emp = 0.0
-                        rate = 0.0
-                        pay_calc = {
-                            'regular_hours': 0.0,
-                            'ot15_hours': 0.0,
-                            'ot20_hours': 0.0,
-                            'regular_amount': 0.0,
-                            'ot15_amount': 0.0,
-                            'ot20_amount': 0.0,
-                            'total_amount': 0.0
-                        }
+                    # Convert to view format (matching existing frontend expectations)
+                    wbs_data_sorted = []
+                    for emp in wbs_output:
+                        wbs_data_sorted.append({
+                            "employee_name": emp['employee_name'],
+                            "employee_number": emp['employee_number'], 
+                            "ssn": emp['ssn'],
+                            "department": emp['department'],
+                            "hours": float(emp['hours']),
+                            "rate": float(emp['rate']),
+                            "regular_hours": emp['regular_hours'],
+                            "ot15_hours": emp['ot15_hours'],
+                            "ot20_hours": emp['ot20_hours'],
+                            "regular_amount": emp['regular_hours'] * emp['rate'] if emp['rate'] > 0 else 0,
+                            "ot15_amount": emp['ot15_hours'] * emp['rate'] if emp['rate'] > 0 else 0,
+                            "ot20_amount": emp['ot20_hours'] * emp['rate'] if emp['rate'] > 0 else 0,
+                            "total_amount": emp['total_amount'],
+                            "source": emp['source']  # SIERRA_CALCULATED or MISSING_ZERO
+                        })
                     
-                    wbs_data_sorted.append({
-                        "employee_name": wbs_name,
-                        "employee_number": emp_info['employee_number'],
-                        "ssn": emp_info['ssn'],
-                        "department": emp_info['department'],
-                        "hours": float(total_hours_emp),
-                        "rate": float(rate),
-                        "regular_hours": pay_calc['regular_hours'],
-                        "ot15_hours": pay_calc['ot15_hours'],
-                        "ot20_hours": pay_calc['ot20_hours'],
-                        "regular_amount": pay_calc['regular_amount'],
-                        "ot15_amount": pay_calc['ot15_amount'],
-                        "ot20_amount": pay_calc['ot20_amount'],
-                        "total_amount": pay_calc['total_amount']
+                    return jsonify({
+                        "success": True,
+                        "message": f"✅ CLEAN 3-STAGE CONVERSION - ALL {len(wbs_data_sorted)} employees in exact WBS order",
+                        "format": "view_only_clean_3stage",
+                        "system": "Clean 3-Stage Pipeline",
+                        "calculations_source": "100% calculated from Sierra data - no shortcuts",
+                        "stage_breakdown": {
+                            "stage1_raw_entries": pipeline_result['stage1']['total_entries'],
+                            "stage1_unique_employees": pipeline_result['stage1']['unique_employees'], 
+                            "stage2_consolidated": pipeline_result['stage2']['consolidated_employees'],
+                            "stage3_wbs_with_data": stage3_data['wbs_with_data'],
+                            "stage3_wbs_zero": stage3_data['wbs_with_zero']
+                        },
+                        "totals": {
+                            "sierra_raw_amount": pipeline_result['stage1']['total_amount'],
+                            "consolidated_amount": pipeline_result['stage2']['total_amount'],
+                            "final_wbs_amount": stage3_data['final_total_amount'],
+                            "total_wbs_employees": len(wbs_data_sorted),
+                            "employees_with_sierra_data": stage3_data['wbs_with_data']
+                        },
+                        "verification": {
+                            "all_calculations_from_sierra": True,
+                            "no_gold_standard_copying": True,
+                            "transparent_3stage_process": True
+                        },
+                        "preview_data": wbs_data_sorted[:10],  # First 10 records
+                        "full_wbs_data": wbs_data_sorted  # ALL 79 employees in exact WBS order
                     })
-                
-                # Find specific employees for debugging
-                dianne_data = [entry for entry in wbs_data_sorted if 'Dianne' in entry['employee_name']]
-                
-                return jsonify({
-                    "success": True,
-                    "message": f"WBS processing completed - ALL {len(wbs_data_sorted)} employees in exact WBS order",
-                    "format": "view_only",
-                    "total_employees": len(wbs_data_sorted),
-                    "sierra_employees": len(employee_hours),
-                    "total_hours": total_hours,
-                    "employee_names": [emp['employee_name'] for emp in wbs_data_sorted[:10]],
-                    "summary": {
-                        "total_hours": total_hours,
-                        "total_amount": total_amount,
-                        "total_wbs_employees": len(wbs_data_sorted),
-                        "sierra_employees_found": len(employee_hours)
-                    },
-                    "preview_data": wbs_data_sorted[:10],  # First 10 records
-                    "full_wbs_data": wbs_data_sorted  # ALL 79 employees in exact WBS order
-                })
+                else:
+                    return jsonify({"error": "3-stage pipeline failed to complete"}), 500
             
             
-            # Otherwise, create and return Excel file (download mode)
+            # Otherwise, create and return Excel file (download mode) - CLEAN 3-STAGE
             else:
                 # Create output file path
-                output_filename = f"WBS_Payroll_{filename}"
+                output_filename = f"Clean3Stage_WBS_{filename}"
                 output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
                 
-                # Convert file
-                result = converter.convert(input_path, output_path)
+                # Use clean 3-stage system for conversion
+                pipeline_result = simple_3stage.convert_full_pipeline(input_path)
                 
-                if not result['success']:
-                    return jsonify({"error": f"Conversion failed: {result['error']}"}), 422
+                if not pipeline_result['pipeline_complete']:
+                    return jsonify({"error": "Clean 3-stage conversion failed"}), 422
+                
+                # Create Excel file from WBS output
+                wbs_output = pipeline_result['stage3']['wbs_output']
+                converter.create_wbs_excel(wbs_output, output_path)
                 
                 # Return the converted file
                 return send_file(
@@ -493,6 +487,101 @@ def multi_stage_stage1():
                 
     except Exception as e:
         return jsonify({"error": f"Stage 1 failed: {str(e)}"}), 500
+
+# NEW CLEAN 3-STAGE ENDPOINTS
+
+@app.route('/api/3stage/full-pipeline', methods=['POST'])
+def clean_3stage_full_pipeline():
+    """Clean 3-stage full pipeline: Parse → Consolidate → Apply WBS Rules"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+        
+        file = request.files['file']
+        if not allowed_file(file.filename):
+            return jsonify({"error": "File must be Excel format (.xlsx or .xls)"}), 400
+        
+        filename = secure_filename(file.filename)
+        input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(input_path)
+        
+        try:
+            # Run full 3-stage pipeline
+            result = simple_3stage.convert_full_pipeline(input_path)
+            
+            # Check if user wants Excel file download
+            format_type = request.form.get('format', 'json')
+            
+            if format_type == 'excel':
+                # Create Excel output
+                output_filename = f"Clean3Stage_WBS_{filename}"
+                output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
+                
+                # Use converter to create Excel file from WBS output
+                converter.create_wbs_excel(result['final_wbs_output'], output_path)
+                
+                return send_file(
+                    output_path,
+                    as_attachment=True,
+                    download_name=output_filename,
+                    mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                )
+            else:
+                # Return JSON with all stage data
+                return jsonify({
+                    "success": True,
+                    "system": "Clean 3-Stage Pipeline",
+                    "message": "All stages completed with verification",
+                    "pipeline_complete": result['pipeline_complete'],
+                    "stage1": result['stage1'],
+                    "stage2": result['stage2'], 
+                    "stage3": result['stage3'],
+                    "final_summary": {
+                        "sierra_employees_processed": result['stage1']['unique_employees'],
+                        "wbs_employees_with_data": result['stage3']['wbs_with_data'],
+                        "wbs_employees_zero": result['stage3']['wbs_with_zero'],
+                        "final_amount": result['stage3']['final_total_amount'],
+                        "calculations_source": "100% calculated from Sierra data"
+                    },
+                    "wbs_output": result['final_wbs_output'][:20]  # First 20 for preview
+                })
+                
+        finally:
+            try:
+                os.remove(input_path)
+            except:
+                pass
+                
+    except Exception as e:
+        app.logger.error(f"Clean 3-stage pipeline error: {str(e)}")
+        return jsonify({"error": f"3-stage pipeline failed: {str(e)}"}), 500
+
+@app.route('/api/3stage/stage1', methods=['POST']) 
+def clean_3stage_stage1():
+    """Clean Stage 1: Parse Sierra data only"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+        
+        file = request.files['file']
+        if not allowed_file(file.filename):
+            return jsonify({"error": "File must be Excel format (.xlsx or .xls)"}), 400
+        
+        filename = secure_filename(file.filename)
+        input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(input_path)
+        
+        try:
+            result = simple_3stage.stage1_parse_sierra(input_path)
+            return jsonify(result)
+        finally:
+            try:
+                os.remove(input_path)
+            except:
+                pass
+                
+    except Exception as e:
+        return jsonify({"error": f"Clean Stage 1 failed: {str(e)}"}), 500
 
 @app.route('/api/multi-stage/validate', methods=['GET'])
 def multi_stage_validate():

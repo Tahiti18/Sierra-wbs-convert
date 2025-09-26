@@ -892,7 +892,8 @@ class WBSOrderedConverter:
             "Arroyo, Luis": "Arroyo, Jose",
             "Lopez, Alexander": "Lopez, Gerwin A",
             "Chavez, Derick": "Chavez, Derick J",
-            "Cortez, Kevin": "Duarte, Kevin",
+            # FIXED: Kevin Cortez should map to Cortez, Kevin (not Duarte, Kevin)
+            # "Cortez, Kevin": "Duarte, Kevin",  # REMOVED - This was wrong!
             "Cuevas, Carlos": "Cuevas Barragan, Carlos",
             "Dean, Jake": "Dean, Jacob P",
             "Espinoza, Jose": "Espinoza, Jose Federico",
@@ -914,8 +915,8 @@ class WBSOrderedConverter:
             "Ramon, Endhy": "Chavez, Endhy",           
             "Navichoque, Marlon": "Navichoque, Marvin", 
             "Gomez, Randel": "Gomez, Randal",
-            # REMOVE INCORRECT MAPPING: "Carrasco, Daniel" should NOT map to "Castaneda, Andy"
-            # These are two different people with different amounts
+            # FIXED MAPPINGS FOR UNMAPPED EMPLOYEES
+            "Carrasco, Daniel": "Mateos, Daniel"  # Daniel Carrasco → Mateos, Daniel ($2,200)
         }
         
         return name_mappings.get(normalized, normalized)

@@ -9,7 +9,7 @@ import numpy as np
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import json
-from wbs_accurate_converter import WBSAccurateConverter
+from wbs_ordered_converter import WBSOrderedConverter
 
 class MultiStagePayrollVerification:
     """
@@ -17,7 +17,7 @@ class MultiStagePayrollVerification:
     Each stage can be viewed and downloaded independently
     """
     
-    def __init__(self, converter: WBSAccurateConverter):
+    def __init__(self, converter: WBSOrderedConverter):
         self.converter = converter
         self.stage_results = {}
         
