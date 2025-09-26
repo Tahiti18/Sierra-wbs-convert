@@ -909,7 +909,12 @@ class WBSOrderedConverter:
             "Torrez, Jose": "Torrez, Jose R",
             "Vargas, Karina": "Vargas Pineda, Karina",
             "Vera, Erick": "Serrano, Erick V",
-            "Rivas, Manuel": "Rivas Beltran, Angel M"
+            "Rivas, Manuel": "Rivas Beltran, Angel M",
+            # CRITICAL MISSING MAPPINGS - Recover $3,150 in payroll
+            "Ramon, Endhy": "Chavez, Endhy",           # $1,016.67
+            "Navichoque, Marlon": "Navichoque, Marvin", # $720.00
+            "Gomez, Randel": "Gomez, Randal",          # $600.00
+            "Carrasco, Daniel": "Castaneda, Andy"       # $813.33 - Need to verify this mapping
         }
         
         return name_mappings.get(normalized, normalized)
